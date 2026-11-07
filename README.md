@@ -13,21 +13,43 @@
 обычно уже есть, в Windows 10/11 — тоже (иначе: *Параметры → Система →
 Дополнительные компоненты → Клиент OpenSSH*).
 
+Готовые сборки — на странице
+[Releases](https://github.com/lstcrsdd/server-panel/releases/latest);
+Go для них не нужен. Собрать самому — см. ниже.
+
+| Система | Архив |
+|---|---|
+| Windows 10/11 | `server-panel-windows-amd64.zip` (ARM — `windows-arm64`) |
+| macOS на Apple M1–M4 | `server-panel-macos-arm64.tar.gz` |
+| macOS на Intel | `server-panel-macos-amd64.tar.gz` |
+| Linux | `server-panel-linux-amd64.tar.gz` (ARM — `linux-arm64`) |
+
 ### Windows
 
-1. Скачайте репозиторий (*Code → Download ZIP*) и распакуйте.
-2. Дважды щёлкните `start-windows.bat`. Если установлен [Go](https://go.dev/dl/),
-   батник соберёт панель сам; если нет — положите рядом готовый
-   `server-panel.exe` (собирается командой `./build.sh` на любой системе с Go).
+1. Распакуйте архив и дважды щёлкните `start-windows.bat` (или сам
+   `server-panel.exe`).
+2. Сборки не подписаны, поэтому Windows может показать «Система Windows
+   защитила ваш компьютер» — нажмите *Подробнее → Выполнить в любом случае*.
 3. Откроется <http://127.0.0.1:7780>.
 
 Автозапуск при входе в Windows: `start-windows.bat autostart` (окно панели
 стартует свёрнутым), выключить — `start-windows.bat noautostart`.
 
+Из исходников: скачайте репозиторий (*Code → Download ZIP*), установите
+[Go](https://go.dev/dl/) и запустите `start-windows.bat` — он соберёт панель
+сам и будет пересобирать её после обновления исходников.
+
 ### macOS
 
-Дважды щёлкните `ServerPanel.command` — он соберёт панель (нужен Go:
-`brew install go`) и откроет её в браузере. Автозапуск в фоне:
+Распакуйте архив. Сборки не подписаны, поэтому один раз снимите карантин:
+
+```bash
+xattr -dr com.apple.quarantine ~/Downloads/server-panel
+```
+
+Затем дважды щёлкните `ServerPanel.command` — панель откроется в браузере.
+Из исходников то же самое: `ServerPanel.command` сам соберёт панель (нужен Go:
+`brew install go`). Автозапуск в фоне:
 
 ```bash
 ./ServerPanel.command autostart
@@ -38,8 +60,10 @@
 ### Linux
 
 ```bash
-go build -trimpath -o server-panel . && ./server-panel
+tar -xzf server-panel-linux-amd64.tar.gz && cd server-panel && ./server-panel
 ```
+
+Из исходников: `go build -trimpath -o server-panel . && ./server-panel`.
 
 Автозапуск через systemd (пользовательская служба):
 
@@ -61,6 +85,7 @@ systemctl --user enable --now server-panel
 
 ```bash
 ./build.sh            # dist/server-panel-{darwin,linux,windows}-{amd64,arm64}
+PACK=1 ./build.sh     # архивы для релиза и SHA256SUMS
 ```
 
 Зависимостей, кроме стандартной библиотеки Go, нет; cgo не используется.

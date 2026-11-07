@@ -28,17 +28,20 @@ if errorlevel 1 (
   exit /b 1
 )
 
-rem Go is installed: rebuild so the exe matches the sources after git pull.
-where go >nul 2>nul
-if not errorlevel 1 (
-  echo Сборка...
-  go build -trimpath -o server-panel.exe . || goto buildfail
+rem Sources here and Go installed: rebuild so the exe matches the sources
+rem after git pull. A release archive has no sources and just runs the exe.
+if exist main.go (
+  where go >nul 2>nul
+  if not errorlevel 1 (
+    echo Сборка...
+    go build -trimpath -o server-panel.exe . || goto buildfail
+  )
 )
 if not exist server-panel.exe (
   echo Не найден server-panel.exe.
-  echo Скачайте server-panel-windows-amd64.exe со страницы Releases,
-  echo переименуйте в server-panel.exe и положите рядом с этим файлом,
-  echo или установите Go: https://go.dev/dl/
+  echo Скачайте готовый архив для Windows со страницы
+  echo   https://github.com/lstcrsdd/server-panel/releases/latest
+  echo или установите Go, чтобы собрать панель из исходников: https://go.dev/dl/
   pause
   exit /b 1
 )
