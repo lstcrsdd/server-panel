@@ -20,7 +20,7 @@ pack() {
   stage="dist/.stage/server-panel"
   rm -rf dist/.stage
   mkdir -p "$stage"
-  cp README.md "$stage/"
+  cp README.md LICENSE "$stage/"
   if [ "$1" = windows ]; then
     cp "$3" "$stage/server-panel.exe"
     cp start-windows.bat "$stage/"
