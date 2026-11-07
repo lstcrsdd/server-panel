@@ -56,6 +56,9 @@ type Settings struct {
 	// SSHSetup — пользователь уже выбрал, какие хосты ~/.ssh/config показывать.
 	// До этого (первый запуск) панель их не подключает, а предлагает выбрать.
 	SSHSetup *bool `json:"sshSetup,omitempty"`
+
+	Notes     []*Note     `json:"notes,omitempty"`     // заметки пользователя
+	Scenarios []*Scenario `json:"scenarios,omitempty"` // сохранённые сценарии
 }
 
 type App struct {

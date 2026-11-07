@@ -184,6 +184,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .side-foot { padding: 12px 14px 14px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
 .side-foot-row { display: flex; justify-content: space-between; gap: 8px; }
+.add-short { display: none; }
+@media (max-width: 420px) {
+  .add-long { display: none; }
+  .add-short { display: inline; }
+  .side .brand { padding: 10px 12px; }
+  .side .side-foot { padding: 6px 12px 6px 0; }
+}
 
 /* ---------- статусы ---------- */
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; display: inline-block; }
@@ -534,7 +541,11 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100vh; }
   .side { border-right: 0; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; align-items: center; }
   .brand { padding: 10px 16px; }
-  .side-nav { padding: 0 6px; }
+  /* разделы — строкой с прокруткой, как и список серверов */
+  .side-nav { flex: 1 1 100%; order: 4; display: flex; gap: 2px; overflow-x: auto; padding: 0 8px 6px; scrollbar-width: none; }
+  .side-nav::-webkit-scrollbar { display: none; }
+  .side-nav .nav-item { flex: none; white-space: nowrap; padding: 6px 10px; gap: 8px; }
+  .side-nav .nav-item.active::before { display: none; }
   .side-label, .srv-sub { display: none; }
   .srv-list { flex: 1 1 100%; order: 5; display: flex; gap: 4px; overflow-x: auto; padding: 0 12px 8px; }
   .srv { display: flex; gap: 8px; padding: 6px 10px; white-space: nowrap; }
@@ -726,4 +737,70 @@ td.nowrap { white-space: nowrap; }
 }
 @media (max-width: 760px) {
   .tbl.manage th:nth-child(4), .tbl.manage td:nth-child(4) { display: none; }
+}
+
+/* ---------- заметки ---------- */
+.notes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; align-items: start; }
+.note { padding: 12px 14px 10px; display: grid; gap: 8px; min-width: 0; }
+.note.pinned { box-shadow: inset 3px 0 0 var(--accent), var(--shadow); }
+.note-head { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.note-open { flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 2px 0; font: inherit; color: inherit; cursor: pointer; border-radius: 6px; }
+.note-open:hover .note-title { color: var(--accent-ink); }
+.note-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note-title { font-weight: 600; font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+.note-pin { flex: none; color: var(--muted); margin: -3px -6px 0 0; }
+.note-pin.on { color: var(--accent); }
+.note-text {
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; color: var(--ink-2);
+  display: -webkit-box; -webkit-line-clamp: 12; -webkit-box-orient: vertical; overflow: hidden;
+}
+.note-text a { color: var(--accent-ink); }
+.note-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.note-meta a.pchip { color: var(--ink); text-decoration: none; }
+.note-edit { min-height: 220px; resize: vertical; line-height: 1.5; font-size: 14px; }
+.pin-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 16px; }
+.pin-note {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 420px; padding: 4px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.pin-note .ico { width: 14px; height: 14px; color: var(--accent); flex: none; }
+.pin-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pin-note:hover { border-color: var(--border-strong); color: var(--ink); }
+.pin-more { align-self: center; font-size: 12.5px; color: var(--muted); }
+.note-badge { display: inline-flex; align-items: center; gap: 2px; font-size: 11.5px; color: var(--muted); flex: none; }
+.note-badge .ico { width: 14px; height: 14px; }
+.tab-count { margin-left: 5px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- сценарии ---------- */
+.scn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.scn { padding: 14px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.scn-head { display: flex; align-items: flex-start; gap: 8px; }
+.scn-script {
+  margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--console); border: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink-2); white-space: pre; overflow: hidden; text-overflow: ellipsis;
+}
+.scn-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.scn-actions .grow { flex: 1; }
+.scn-edit { min-height: 220px; resize: vertical; font-size: 13px; line-height: 1.5; tab-size: 2; }
+.scn-details summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.scn-details .pre { margin: 8px 0 0; max-height: 240px; overflow: auto; }
+.run-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.run-title .ico { color: var(--accent); flex: none; }
+
+/* ---------- расписание ---------- */
+.tbl.sched td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
+.tbl.sched td .desc { white-space: normal; }
+.tbl.sched tr.is-paused td:not(.actions) { opacity: 0.65; }
+.tbl.sched a.pchip { color: var(--ink); text-decoration: none; }
+.days { display: flex; gap: 4px; flex-wrap: wrap; }
+.daybtn {
+  min-width: 36px; height: 32px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer;
+}
+.daybtn.on { background: var(--accent); border-color: transparent; color: #fff; }
+.daybtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.modal .seg { flex-wrap: wrap; }
+@media (max-width: 860px) {
+  .scn-grid, .notes-grid { grid-template-columns: minmax(0, 1fr); }
+  .pin-note { max-width: 100%; }
 }

@@ -61,6 +61,19 @@ func (a *App) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/servers/{id}/files/op", a.withMon(a.handleFileOp))
 	mux.HandleFunc("GET /api/servers/{id}/files/download", a.withMon(a.handleFileDownload))
 	mux.HandleFunc("POST /api/servers/{id}/files/upload", a.withMon(a.handleFileUpload))
+	mux.HandleFunc("GET /api/servers/{id}/schedule", a.withMon(a.handleSchedule))
+	mux.HandleFunc("POST /api/servers/{id}/schedule", a.withMon(a.handleAddSchedule))
+	mux.HandleFunc("DELETE /api/servers/{id}/schedule/{tid}", a.withMon(a.handleDeleteSchedule))
+	mux.HandleFunc("POST /api/servers/{id}/schedule/{tid}/action", a.withMon(a.handleScheduleAction))
+	mux.HandleFunc("GET /api/servers/{id}/schedule/{tid}/log", a.withMon(a.handleScheduleLog))
+	mux.HandleFunc("GET /api/notes", a.handleNotes)
+	mux.HandleFunc("POST /api/notes", a.handleAddNote)
+	mux.HandleFunc("PUT /api/notes/{nid}", a.handleUpdateNote)
+	mux.HandleFunc("DELETE /api/notes/{nid}", a.handleDeleteNote)
+	mux.HandleFunc("GET /api/scenarios", a.handleScenarios)
+	mux.HandleFunc("POST /api/scenarios", a.handleAddScenario)
+	mux.HandleFunc("PUT /api/scenarios/{sid}", a.handleUpdateScenario)
+	mux.HandleFunc("DELETE /api/scenarios/{sid}", a.handleDeleteScenario)
 	mux.HandleFunc("GET /api/keys", a.handleKeys)
 	mux.HandleFunc("GET /api/alerts", a.handleAlerts)
 	mux.HandleFunc("PUT /api/alerts/config", a.handleAlertConfig)
@@ -116,7 +129,8 @@ func (a *App) handleStream(w http.ResponseWriter, r *http.Request) {
 	a.alerts.mu.Lock()
 	firing := a.alerts.firingList()
 	a.alerts.mu.Unlock()
-	hello, _ := json.Marshal(map[string]any{"servers": a.views(true), "interval": a.interval.Milliseconds(), "firing": firing, "setup": a.setupInfo()})
+	hello, _ := json.Marshal(map[string]any{"servers": a.views(true), "interval": a.interval.Milliseconds(), "firing": firing, "setup": a.setupInfo(),
+		"notes": a.notesCopy(), "scenarios": a.scenariosCopy()})
 	w.Write([]byte("retry: 3000\n"))
 	w.Write(sseMessage("hello", hello))
 	fl.Flush()
@@ -420,14 +434,19 @@ func (a *App) handleDockerLogs(w http.ResponseWriter, r *http.Request, m *Monito
 
 func (a *App) handleExec(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	var req struct {
-		Cmd  string `json:"cmd"`
-		Sudo bool   `json:"sudo"`
+		Cmd     string `json:"cmd"`
+		Sudo    bool   `json:"sudo"`
+		Timeout int    `json:"timeout"` // секунд; сценарии могут работать дольше обычной команды
 	}
 	if err := readJSON(r, &req); err != nil || strings.TrimSpace(req.Cmd) == "" {
 		writeErr(w, 400, "пустая команда")
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	limit := 120 * time.Second
+	if req.Timeout > 0 && req.Timeout <= 3600 {
+		limit = time.Duration(req.Timeout) * time.Second
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), limit)
 	defer cancel()
 	srv := m.server()
 	prefix := ""

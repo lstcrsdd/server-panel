@@ -34,6 +34,18 @@
         <svg class="ico" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M6.5 8.5l2.2 1.8-2.2 1.8M10.5 12.5h3"/></svg>
         <span>Команды</span>
       </a>
+      <a class="nav-item" id="nav-scenarios" href="#/scenarios">
+        <svg class="ico" viewBox="0 0 20 20"><path d="M6 4.5h8.5M6 10h8.5M6 15.5h8.5"/><path d="M3 3.8l1.2 1.2L3 6.2" /><path d="M3 9.3l1.2 1.2L3 11.7"/><path d="M3 14.8l1.2 1.2L3 17.2"/></svg>
+        <span>Сценарии</span>
+      </a>
+      <a class="nav-item" id="nav-schedule" href="#/schedule">
+        <svg class="ico" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.6"/></svg>
+        <span>Расписание</span>
+      </a>
+      <a class="nav-item" id="nav-notes" href="#/notes">
+        <svg class="ico" viewBox="0 0 20 20"><path d="M5 3.5h7l3 3v10H5z"/><path d="M11.5 3.5v3.5H15M7.5 10.5h5M7.5 13.5h3.5"/></svg>
+        <span>Заметки</span>
+      </a>
       <a class="nav-item" id="nav-manage" href="#/manage">
         <svg class="ico" viewBox="0 0 20 20"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
         <span>Управление</span>
@@ -44,7 +56,7 @@
     <div class="side-foot">
       <button class="btn primary block" id="btn-add" type="button">
         <svg class="ico" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" stroke-width="2" stroke-linecap="round"/></svg>
-        Добавить сервер
+        <span class="add-long">Добавить сервер</span><span class="add-short">Сервер</span>
       </button>
       <div class="side-foot-row">
         <button class="btn ghost sm" id="btn-reload" type="button" title="Перечитать ~/.ssh/config">Обновить список</button>
@@ -59,6 +71,7 @@
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <script src="charts.js"></script>
 <script src="manage.js"></script>
+<script src="tools.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

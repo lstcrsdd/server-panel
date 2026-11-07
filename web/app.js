@@ -45,6 +45,10 @@ const ICONS = {
   plus: '<path d="M10 4.5v11M4.5 10h11"/>',
   up: '<path d="M5.5 12l4.5-4.5 4.5 4.5"/>',
   down: '<path d="M5.5 8l4.5 4.5 4.5-4.5"/>',
+  pin: '<path d="M7.5 3.5h5M8.5 3.5v4.2L6 10.5v1.5h8v-1.5l-2.5-2.8V3.5M10 12v4.5"/>',
+  note: '<path d="M5 3.5h7l3 3v10H5z"/><path d="M11.5 3.5v3.5H15M7.5 10.5h5M7.5 13.5h3.5"/>',
+  clock: '<circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.6"/>',
+  play: '<path d="M7 5.2v9.6L14.5 10z"/>',
 };
 function icon(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -245,6 +249,9 @@ const S = {
   firing: [],
   seenEvents: new Set(),
   setup: null,
+  notes: [],
+  scenarios: [],
+  scnRuns: [],
 };
 
 function ingestServers(list) {
@@ -269,6 +276,8 @@ function connect() {
     ingestServers(d.servers);
     S.firing = d.firing || [];
     S.setup = d.setup || null;
+    S.notes = d.notes || [];
+    S.scenarios = d.scenarios || [];
     updateAlertBadge();
     setConn(true);
     renderSidebar();
@@ -280,6 +289,8 @@ function connect() {
     route(true);
     refreshSetup();
   });
+  es.addEventListener('notes', (e) => setNotes(JSON.parse(e.data)));
+  es.addEventListener('scenarios', (e) => setScenarios(JSON.parse(e.data)));
   es.addEventListener('status', (e) => {
     const d = JSON.parse(e.data);
     const s = S.by.get(d.id);
@@ -394,10 +405,13 @@ function updateAlertBadge() {
 
 function highlightSidebar() {
   const r = parseRoute();
-  $('#nav-fleet').classList.toggle('active', r.view === 'fleet');
-  $('#nav-alerts').classList.toggle('active', r.view === 'alerts');
-  $('#nav-commands').classList.toggle('active', r.view === 'commands');
-  $('#nav-manage').classList.toggle('active', r.view === 'manage');
+  for (const a of document.querySelectorAll('.side-nav .nav-item')) a.classList.toggle('active', a.id === 'nav-' + r.view);
+  // на узком экране разделы — строка с прокруткой: выбранный должен быть виден
+  const nav = $('.side-nav'), act = nav && nav.querySelector('.nav-item.active');
+  if (act && nav.scrollWidth > nav.clientWidth) {
+    const nr = nav.getBoundingClientRect(), ar = act.getBoundingClientRect();
+    if (ar.left < nr.left || ar.right > nr.right) nav.scrollLeft += ar.left - nr.left - 16;
+  }
   for (const [id, row] of sideRows) row.row.classList.toggle('active', r.view === 'server' && r.id === id);
 }
 
@@ -441,6 +455,7 @@ class FleetPage {
   }
 
   onData() { this.render(); }
+  onNotes() { this.render(); }
 
   onSetup() {
     const want = !S.servers.some((s) => !s.hidden);
@@ -504,7 +519,7 @@ class FleetPage {
     const open = () => { location.hash = '#/s/' + encodeURIComponent(srv.id); };
     el.addEventListener('click', (e) => { if (!e.target.closest('button')) open(); });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
-    const head = h('div', { class: 'fcard-head' }, h('span', { class: 'fcard-name' }, srv.name), statusChip(srv));
+    const head = h('div', { class: 'fcard-head' }, h('span', { class: 'fcard-name' }, srv.name), noteBadge(srv.id), statusChip(srv));
     el.append(head, h('div', { class: 'fcard-meta', title: meta }, meta));
     const ref = { el, srv };
     if (live || srv.status === 'connecting' && srv.latest) {
@@ -862,7 +877,11 @@ class CommandsPage {
         this.pickEl,
         h('div', { class: 'chips', style: { margin: '14px 0 10px' } }, QUICK.map((q) => h('button', { class: 'chip', type: 'button', onclick: () => this.run(q, true) }, q))),
         h('div', { class: 'cmd-row' }, this.input,
-          h('div', { class: 'cmd-side' }, h('label', { class: 'check', title: 'Для серверов, где вы подключены не под root' }, sudoCb, 'через sudo'), this.runBtn)),
+          h('div', { class: 'cmd-side' }, h('label', { class: 'check', title: 'Для серверов, где вы подключены не под root' }, sudoCb, 'через sudo'), this.runBtn,
+            h('button', {
+              class: 'btn ghost sm', type: 'button', title: 'Сохранить команду как сценарий',
+              onclick: () => scenarioDialog({ script: this.input.value.trim() || S.cmdHist[S.cmdHist.length - 1] || '', sudo: this.sudo }),
+            }, 'В сценарий'))),
         h('div', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' } }, 'Enter — выполнить, Shift+Enter — новая строка, ↑ — предыдущие команды. Для редакторов и top откройте «Терминал» на странице сервера.')),
       this.runsEl);
     this.renderPick();
@@ -915,56 +934,21 @@ class CommandsPage {
     if (S.cmdHist[S.cmdHist.length - 1] !== cmd) S.cmdHist.push(cmd);
     if (S.cmdHist.length > 100) S.cmdHist.shift();
     const sudo = this.sudo;
-    const prog = h('span', { class: 'muted' });
-    const body = h('div', { class: 'run-body' });
-    const el = h('div', { class: 'card run' },
-      h('div', { class: 'run-head' }, h('pre', { class: 'run-cmd' }, (sudo ? '# ' : '$ ') + cmd), h('span', { class: 'grow' }), prog,
-        h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { el.remove(); S.cmdRuns = S.cmdRuns.filter((r) => r.el !== el); } }, 'Убрать')),
-      body);
-    const run = { el };
-    S.cmdRuns.unshift(run);
+    const r = runCard({
+      title: h('pre', { class: 'run-cmd' }, (sudo ? '# ' : '$ ') + cmd),
+      ids, body: { cmd, sudo },
+      onRemove: (el) => { S.cmdRuns = S.cmdRuns.filter((x) => x.el !== el); },
+    });
+    S.cmdRuns.unshift(r);
     if (S.cmdRuns.length > 30) S.cmdRuns.pop().el.remove();
-    this.runsEl.prepend(el);
-    const results = new Map();
-    const render = () => {
-      prog.textContent = results.size < ids.length ? `выполнено ${results.size} из ${ids.length}…` : `${ids.length} ${Fmt.plural(ids.length, 'сервер', 'сервера', 'серверов')} · ${Fmt.clock(Date.now())}`;
-      // одинаковый вывод показываем один раз
-      const groups = new Map();
-      for (const id of ids) {
-        const r = results.get(id);
-        const key = r ? (r.error ? 'E' + r.error : r.code + '\u0000' + r.output) : '\u0001pending';
-        if (!groups.has(key)) groups.set(key, { r, ids: [] });
-        groups.get(key).ids.push(id);
-      }
-      body.replaceChildren(...[...groups.values()].map((g) => {
-        const names = g.ids.map((id) => h('a', { class: 'pchip', href: '#/s/' + encodeURIComponent(id) }, S.by.get(id) ? S.by.get(id).name : id));
-        if (!g.r) return h('div', { class: 'rgroup' }, h('div', { class: 'rgroup-head' }, names, h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + 'выполняется…')));
-        const r = g.r;
-        const badge = r.error ? h('span', { class: 'badge crit' }, 'ошибка') : h('span', { class: 'badge ' + (r.code ? 'warn' : 'good') }, `код ${r.code}`);
-        return h('div', { class: 'rgroup' },
-          h('div', { class: 'rgroup-head' }, names, badge, groups.size > 1 && g.ids.length > 1 ? h('span', { class: 'muted' }, 'одинаковый вывод') : null,
-            r.ms != null ? h('span', { class: 'muted' }, `${Fmt.int(r.ms)} мс`) : null),
-          r.error ? h('div', { class: 'bad-ink', style: { fontSize: '13px' } }, r.error) : null,
-          r.output ? h('pre', { class: 'cout rout' }, r.output) : r.error ? null : h('div', { class: 'muted', style: { fontSize: '12.5px' } }, '(нет вывода)'),
-          r.truncated ? h('div', { class: 'muted', style: { fontSize: '12px' } }, 'вывод обрезан до 2 МБ') : null);
-      }));
-    };
-    render();
-    await Promise.all(ids.map(async (id) => {
-      try {
-        const r = await api(`/servers/${encodeURIComponent(id)}/exec`, { method: 'POST', body: { cmd, sudo } });
-        results.set(id, r);
-      } catch (e) {
-        results.set(id, { error: e.message });
-      }
-      render();
-    }));
+    this.runsEl.prepend(r.el);
+    await r.done;
   }
 
   destroy() {}
 }
 
-const PAGES = { fleet: FleetPage, alerts: AlertsPage, commands: CommandsPage, manage: ManagePage };
+const PAGES = { fleet: FleetPage, alerts: AlertsPage, commands: CommandsPage, scenarios: ScenariosPage, schedule: SchedulePage, notes: NotesPage, manage: ManagePage };
 
 /* ---------- страница сервера ---------- */
 const TAB_DEFS = [
@@ -977,6 +961,8 @@ const TAB_DEFS = [
   ['network', 'Сеть'],
   ['docker', 'Docker'],
   ['system', 'Система'],
+  ['schedule', 'Расписание'],
+  ['notes', 'Заметки'],
   ['term', 'Терминал'],
 ];
 
@@ -1023,7 +1009,8 @@ class ServerPage {
         h('div', { class: 'head-actions' },
           h('button', { class: 'btn', type: 'button', onclick: () => reconnect(s.id), title: 'Переподключиться' }, icon('refresh'), 'Переподключить'),
           h('button', { class: 'btn danger', type: 'button', onclick: () => rebootDialog(s) }, icon('power'), 'Перезагрузить'),
-          h('button', { class: 'btn icon-only', type: 'button', onclick: () => settingsDialog(s), title: 'Настройки сервера', 'aria-label': 'Настройки сервера' }, icon('gear')))));
+          h('button', { class: 'btn icon-only', type: 'button', onclick: () => settingsDialog(s), title: 'Настройки сервера', 'aria-label': 'Настройки сервера' }, icon('gear')))),
+      pinnedNotesStrip(s.id));
     this.updateUptime();
 
     this.alertEl.replaceChildren();
@@ -1052,10 +1039,11 @@ class ServerPage {
     for (const [key, label] of TAB_DEFS) {
       if (key === 'docker' && !docker) continue;
       if (key === 'vpn' && s && s.units && !s.units.some((u) => u.vpn) && this.tab !== 'vpn') continue;
+      const n = key === 'notes' ? notesOf(this.id).length : 0;
       this.tabsEl.append(h('button', {
         type: 'button', role: 'tab', class: 'tab' + (key === this.tab ? ' active' : ''), 'aria-selected': String(key === this.tab),
         onclick: () => { location.hash = `#/s/${encodeURIComponent(this.id)}/${key}`; },
-      }, label));
+      }, label, n ? h('span', { class: 'tab-count' }, String(n)) : null));
     }
     this.tabsEl.scrollLeft = x;
   }
@@ -1090,6 +1078,15 @@ class ServerPage {
 
   onUnits(srv) {
     if (srv.id === this.id) this.renderTabs();
+  }
+
+  onNotes() {
+    this.refreshHead();
+    if (this.ctrl && this.ctrl.onNotes) this.ctrl.onNotes();
+  }
+
+  onSchedule() {
+    if (this.ctrl && this.ctrl.onSchedule) this.ctrl.onSchedule();
   }
 
   onStatus(srv) {
@@ -1481,10 +1478,11 @@ function servicesTab(page) {
     tbody.replaceChildren(...list.map((s) => {
       const [cls, text] = serviceState(s);
       const active = s.active === 'active' || s.active === 'activating' || s.active === 'reloading';
-      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': 'Ещё', title: 'Ещё' }, icon('dots'));
+      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': `Ещё: ${s.unit}`, title: 'Ещё' }, icon('dots'));
       more.addEventListener('click', () => popMenu(more, [
         { label: 'Журнал службы', run: () => openLogs(s.unit) },
         { label: 'Перечитать конфигурацию (reload)', run: () => act(s, 'reload') },
+        { label: 'Перезапуск по расписанию…', run: () => scheduleDialog({ servers: [id], kind: 'service', target: s.unit }) },
         '-',
         s.enabled === 'enabled' ? { label: 'Выключить автозапуск', run: () => act(s, 'disable') } : { label: 'Включить автозапуск', run: () => act(s, 'enable') },
       ]));
@@ -2669,7 +2667,7 @@ function termTab(page) {
   };
 }
 
-const TABS = { overview: overviewTab, procs: procsTab, services: servicesTab, vpn: vpnTab, files: filesTab, logs: logsTab, network: networkTab, docker: dockerTab, system: systemTab, term: termTab };
+const TABS = { overview: overviewTab, procs: procsTab, services: servicesTab, vpn: vpnTab, files: filesTab, logs: logsTab, network: networkTab, docker: dockerTab, system: systemTab, schedule: scheduleTab, notes: notesTab, term: termTab };
 
 /* ---------- действия с серверами ---------- */
 async function patchServer(id, body) {
