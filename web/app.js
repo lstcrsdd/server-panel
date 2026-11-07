@@ -49,6 +49,9 @@ const ICONS = {
   note: '<path d="M5 3.5h7l3 3v10H5z"/><path d="M11.5 3.5v3.5H15M7.5 10.5h5M7.5 13.5h3.5"/>',
   clock: '<circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.6"/>',
   play: '<path d="M7 5.2v9.6L14.5 10z"/>',
+  bell: '<path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5h-12z"/><path d="M8.5 17.2a1.6 1.6 0 0 0 3 0"/>',
+  send: '<path d="M17 3.5L2.8 9.3l5.6 2.3 2.3 5.6z"/><path d="M8.4 11.6L17 3.5"/>',
+  check: '<path d="M5 10.5l3.2 3.2L15 6.8"/>',
 };
 function icon(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -717,67 +720,171 @@ class AlertsPage {
 
   renderMute() {
     const vis = S.servers.filter((s) => !s.hidden);
+    if (!vis.length) {
+      this.muteEl.replaceChildren(h('div', { class: 'muted', style: { fontSize: '13px' } }, 'Серверов пока нет'));
+      return;
+    }
     this.muteEl.replaceChildren(...vis.map((s) => {
-      const cb = h('input', { type: 'checkbox', checked: !s.mute && s.monitor });
-      cb.disabled = !s.monitor;
-      cb.addEventListener('change', () => patchServer(s.id, { mute: !cb.checked }));
-      return h('label', { class: 'check', title: s.monitor ? '' : 'мониторинг выключен — сервер не проверяется' }, cb, s.name);
+      const on = !s.mute && s.monitor;
+      const b = h('button', {
+        type: 'button', class: 'pick' + (on ? ' on' : ''), 'aria-pressed': String(on), disabled: !s.monitor,
+        title: s.monitor ? (on ? 'Нажмите, чтобы не присылать оповещения по этому серверу' : 'Нажмите, чтобы присылать оповещения') : 'Мониторинг выключен — сервер не проверяется',
+      }, h('span', { class: 'pick-box' }, icon('check')), s.name);
+      b.addEventListener('click', () => {
+        const next = !b.classList.contains('on');
+        b.classList.toggle('on', next);
+        b.setAttribute('aria-pressed', String(next));
+        patchServer(s.id, { mute: !next });
+      });
+      return b;
     }));
   }
 
   renderForm() {
     const c = JSON.parse(JSON.stringify(this.cfg));
     const R = c.rules, CH = c.channels;
-    const num = (obj, key, min, max, step = '1') => {
-      const i = h('input', { class: 'input num', type: 'number', value: String(obj[key] ?? ''), min: String(min), max: String(max), step, inputmode: 'decimal' });
-      i.addEventListener('input', () => { obj[key] = parseFloat(String(i.value).replace(',', '.')); dirty(); });
-      return i;
-    };
-    const chk = (obj, key) => {
-      const i = h('input', { type: 'checkbox', checked: !!obj[key] });
-      i.addEventListener('change', () => { obj[key] = i.checked; dirty(); });
-      return i;
-    };
-    const rule = (r, text, hint) => h('div', { class: 'rule' }, h('label', { class: 'check' }, chk(r, 'on'), h('span', { class: 'rule-text' }, ...text)), hint ? h('div', { class: 'rule-hint' }, hint) : null);
+    let tokenSet = !!c.tgTokenSet;
+    const page = this;
+    const fmtN = (x) => String(x).replace('.', ',');
+    const TOKEN_SAVED = 'сохранён — вставьте новый, чтобы заменить';
 
-    const saveBtn = h('button', { class: 'btn primary', type: 'button', disabled: true }, 'Сохранить');
-    const status = h('span', { class: 'muted', style: { fontSize: '12.5px' } });
-    function dirty() { saveBtn.disabled = false; status.textContent = 'есть несохранённые изменения'; }
+    // ---- автосохранение: каждое изменение уходит на сервер само ----
+    const saveState = h('span', { class: 'save-state', role: 'status', 'aria-live': 'polite' });
+    const setState = (text, cls = '') => {
+      saveState.className = 'save-state' + (cls ? ' ' + cls : '');
+      saveState.replaceChildren(...(cls === 'ok' ? [icon('check')] : []), text);
+    };
+    setState('Изменения сохраняются сами');
+    const invalid = new Set();
+    let timer = 0, saving = false, again = false;
+    const later = (ms = 700) => { clearTimeout(timer); timer = setTimeout(save, ms); };
+    const tgReady = () => !!((tokenSet || CH.tgToken) && CH.tgChat);
+
+    async function save() {
+      clearTimeout(timer);
+      if (invalid.size) { setState('Не сохранено — исправьте поле, выделенное красным', 'bad'); return; }
+      if (saving) { again = true; return; }
+      saving = true;
+      setState('Сохраняю…');
+      const body = JSON.parse(JSON.stringify(c));
+      // Telegram включится, когда будут и токен, и chat id; остальное сохраняем сразу
+      if (CH.telegram && !tgReady()) body.channels.telegram = false;
+      try {
+        const r = await api('/alerts/config', { method: 'PUT', body });
+        page.cfg = r.config;
+        if (CH.tgToken) {
+          tokenSet = true;
+          CH.tgToken = '';
+          tokenIn.value = '';
+          tokenIn.placeholder = TOKEN_SAVED;
+        }
+        if (CH.telegram && !tgReady()) setState('Сохранено. Telegram заработает, когда будут токен и chat id', 'warn');
+        else setState('Сохранено', 'ok');
+      } catch (e) {
+        setState('Не сохранено: ' + e.message, 'bad');
+      } finally {
+        saving = false;
+        syncTg();
+        if (again) { again = false; save(); }
+      }
+    }
+
+    // ---- поле-число с единицей измерения внутри ----
+    const unitIn = (obj, key, { min, max, step = 1, unit, label, onCheck }) => {
+      const i = h('input', { type: 'number', value: String(obj[key] ?? ''), min: String(min), max: String(max), step: String(step), inputmode: 'decimal', 'aria-label': label });
+      const box = h('label', { class: 'unit-in' }, i, h('span', { 'aria-hidden': 'true' }, unit));
+      const check = () => {
+        const v = parseFloat(String(i.value).replace(',', '.'));
+        const ok = Number.isFinite(v) && v >= min && v <= max;
+        box.classList.toggle('invalid', !ok);
+        box.dataset.err = ok ? '' : `Нужно число от ${fmtN(min)} до ${fmtN(max)}`;
+        if (ok) { invalid.delete(i); obj[key] = v; } else invalid.add(i);
+        if (onCheck) onCheck();
+        return ok;
+      };
+      i.addEventListener('input', () => { if (check()) later(); else clearTimeout(timer); });
+      i.addEventListener('change', () => { if (check()) save(); else setState('Не сохранено — исправьте поле, выделенное красным', 'bad'); });
+      return { box, input: i };
+    };
+
+    // ---- правила ----
+    let uid = 0;
+    const ruleRow = ({ r, key, title, pct, min, minLow = 0, text, hint }) => {
+      const id = `ar-${key}-${++uid}`;
+      const sw = h('input', { type: 'checkbox', class: 'switch', role: 'switch', id, checked: !!r[key] });
+      const desc = h('div', { class: 'arule-desc' });
+      let p = null, m = null;
+      const sync = () => {
+        const on = sw.checked;
+        row.classList.toggle('off', !on);
+        const bad = [p, m].find((x) => x && x.box.classList.contains('invalid'));
+        desc.classList.toggle('bad-ink', !!bad);
+        desc.textContent = bad ? bad.box.dataset.err : text(r);
+      };
+      if (pct) p = unitIn(r, 'pct', { min: 1, max: 100, unit: '%', label: `${title}: порог в процентах`, onCheck: () => sync() });
+      if (min) m = unitIn(r, 'min', { min: minLow, max: 1440, step: 0.5, unit: 'мин', label: `${title}: сколько минут`, onCheck: () => sync() });
+      const slot = (x, label) => h('div', { class: 'ap' + (x ? '' : ' ap-none') }, x ? [h('span', { class: 'ap-label' }, label), x.box] : null);
+      const row = h('div', { class: 'arule' },
+        sw,
+        h('div', { class: 'arule-main', title: hint || null }, h('label', { class: 'arule-title', for: id }, title), desc),
+        (pct || min) ? h('div', { class: 'arule-params' }, slot(p, 'порог'), slot(m, 'время')) : null);
+      sw.addEventListener('change', () => { r[key] = sw.checked; sync(); save(); });
+      sync();
+      return row;
+    };
+    const after = (n) => (n > 0 ? `дольше ${fmtN(n)} мин` : 'сразу');
 
     const rules = h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Когда сообщать'))),
-      h('div', { class: 'rules' },
-        rule(R.offline, ['Нет связи с сервером дольше ', num(R.offline, 'min', 0, 1440, '0.5'), ' мин']),
-        rule(R.cpu, ['Процессор загружен больше ', num(R.cpu, 'pct', 1, 100), ' % в среднем за ', num(R.cpu, 'min', 0.5, 1440, '0.5'), ' мин']),
-        rule(R.mem, ['Память занята больше ', num(R.mem, 'pct', 1, 100), ' % в среднем за ', num(R.mem, 'min', 0.5, 1440, '0.5'), ' мин']),
-        rule(R.disk, ['Диск заполнен больше ', num(R.disk, 'pct', 1, 100), ' %']),
-        rule(R.failed, ['Служба завершилась с ошибкой'], 'systemd: состояние failed держится дольше 50 секунд'),
-        rule(R.vpn, ['VPN-служба не работает дольше ', num(R.vpn, 'min', 0, 1440, '0.5'), ' мин'],
-          'xray, AmneziaWG, WireGuard, MTProto, sing-box, Hysteria и другие — если панель видела службу работающей, а потом она остановилась'),
-        h('div', { class: 'rule' }, h('label', { class: 'check' }, chk(R, 'recovery'), 'Сообщать, когда всё вернулось в норму'))),
-      h('div', { class: 'card-sub', style: { margin: '16px 0 8px' } }, 'Следить за серверами'),
-      this.muteEl);
-    this.renderMute();
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Когда сообщать'),
+        h('div', { class: 'card-sub' }, 'Включите нужные проверки и задайте пороги'))),
+      h('div', { class: 'arules' },
+        h('div', { class: 'arule arule-head', 'aria-hidden': 'true' }, h('span'), h('span'), h('span', null, 'Порог'), h('span', null, 'Время')),
+        ruleRow({ r: R.offline, key: 'on', title: 'Сервер недоступен', min: true,
+          text: (x) => `Нет связи с сервером ${after(x.min)}` }),
+        ruleRow({ r: R.cpu, key: 'on', title: 'Высокая нагрузка на процессор', pct: true, min: true, minLow: 0.5,
+          text: (x) => `Загрузка выше ${fmtN(x.pct)} % в среднем за ${fmtN(x.min)} мин` }),
+        ruleRow({ r: R.mem, key: 'on', title: 'Заканчивается память', pct: true, min: true, minLow: 0.5,
+          text: (x) => `Занято больше ${fmtN(x.pct)} % в среднем за ${fmtN(x.min)} мин` }),
+        ruleRow({ r: R.disk, key: 'on', title: 'Заканчивается место на диске', pct: true,
+          text: (x) => `Любой раздел заполнен больше чем на ${fmtN(x.pct)} %` }),
+        ruleRow({ r: R.failed, key: 'on', title: 'Служба упала с ошибкой',
+          text: () => 'Служба systemd в состоянии failed дольше 50 секунд' }),
+        ruleRow({ r: R.vpn, key: 'on', title: 'VPN перестал работать', min: true,
+          hint: 'xray, AmneziaWG, WireGuard, MTProto, sing-box, Hysteria и другие — если панель видела службу работающей, а потом она остановилась',
+          text: (x) => `VPN-служба не работает ${after(x.min)}` })),
+      h('div', { class: 'arules arules-extra' },
+        ruleRow({ r: R, key: 'recovery', title: 'Сообщать о восстановлении',
+          text: () => 'Отдельное сообщение, когда проблема прошла' })));
 
-    // каналы
-    const tokenIn = h('input', { class: 'input', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: c.tgTokenSet ? 'сохранён — введите новый, чтобы заменить' : '123456789:AA…' });
-    const chatIn = h('input', { class: 'input', value: CH.tgChat || '', autocomplete: 'off', spellcheck: 'false', placeholder: 'например 123456789' });
-    tokenIn.addEventListener('input', () => { CH.tgToken = tokenIn.value.trim(); dirty(); });
-    chatIn.addEventListener('input', () => { CH.tgChat = chatIn.value.trim(); dirty(); });
-    const chatsEl = h('div', { class: 'chips', style: { margin: '0' } });
-    const tgBox = h('div', { class: 'form tg-box' },
-      h('label', { class: 'field' }, h('span', null, 'Токен бота'), tokenIn,
-        h('span', { class: 'hint' }, 'Создайте бота у @BotFather в Telegram и вставьте сюда его токен. Хранится только на этом компьютере.')),
-      h('div', { class: 'field' }, h('span', null, 'Chat id — кому писать'),
-        h('div', { class: 'inline' }, chatIn,
-          h('button', { class: 'btn', type: 'button', onclick: findChats }, 'Найти')),
-        h('span', { class: 'hint' }, 'Напишите своему боту любое сообщение, затем нажмите «Найти». Для группы — добавьте бота в группу и напишите там.'),
-        chatsEl),
-      h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: () => test('telegram') }, 'Отправить проверку')));
-    const tgChk = chk(CH, 'telegram');
-    const syncTg = () => { tgBox.hidden = !tgChk.checked; };
-    tgChk.addEventListener('change', syncTg);
-    syncTg();
+    // ---- каналы ----
+    const tokenIn = h('input', { class: 'input mono', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: tokenSet ? TOKEN_SAVED : '123456789:AA…', 'aria-label': 'Токен бота' });
+    const chatIn = h('input', { class: 'input mono', value: CH.tgChat || '', autocomplete: 'off', spellcheck: 'false', placeholder: 'например 123456789', 'aria-label': 'Chat id' });
+    const tokenErr = h('span', { class: 'hint bad-ink', hidden: true });
+    const chatErr = h('span', { class: 'hint bad-ink', hidden: true });
+    const TOKEN_RE = /^\d{5,15}:[A-Za-z0-9_-]{30,64}$/, CHAT_RE = /^(-?\d{1,20}|@[A-Za-z0-9_]{4,64})$/;
+    const fieldCheck = (input, errEl, re, msg) => {
+      const v = input.value.trim();
+      const ok = !v || re.test(v);
+      input.classList.toggle('invalid', !ok);
+      errEl.hidden = ok;
+      errEl.textContent = ok ? '' : msg;
+      if (ok) invalid.delete(input); else invalid.add(input);
+      return ok;
+    };
+    tokenIn.addEventListener('input', () => { if (!tokenIn.value.trim()) fieldCheck(tokenIn, tokenErr, TOKEN_RE, ''); });
+    tokenIn.addEventListener('change', () => {
+      if (!fieldCheck(tokenIn, tokenErr, TOKEN_RE, 'Токен выглядит неверно: нужен вид 123456789:AA…')) return;
+      CH.tgToken = tokenIn.value.trim();
+      if (CH.tgToken) save();
+    });
+    chatIn.addEventListener('input', () => { if (!chatIn.value.trim()) fieldCheck(chatIn, chatErr, CHAT_RE, ''); });
+    chatIn.addEventListener('change', () => {
+      if (!fieldCheck(chatIn, chatErr, CHAT_RE, 'Chat id — это число (123456789 или -100…) или @имя_канала')) return;
+      CH.tgChat = chatIn.value.trim();
+      save();
+    });
+    const chatsEl = h('div', { class: 'chips', style: { margin: '2px 0 0' } });
+    const findBtn = h('button', { class: 'btn', type: 'button', onclick: findChats }, 'Найти');
 
     async function findChats() {
       chatsEl.replaceChildren(h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + 'Ищу…'));
@@ -785,51 +892,75 @@ class AlertsPage {
         const r = await api('/alerts/telegram-chats', { method: 'POST', body: { token: tokenIn.value.trim() } });
         const chats = r.chats || [];
         if (!chats.length) {
-          chatsEl.replaceChildren(h('span', { class: 'muted' }, 'Сообщений боту не найдено — напишите ему и попробуйте снова.'));
+          chatsEl.replaceChildren(h('span', { class: 'muted', style: { fontSize: '12.5px' } }, 'Сообщений боту не найдено — напишите ему и нажмите «Найти» ещё раз.'));
           return;
         }
         chatsEl.replaceChildren(...chats.map((ch) => h('button', {
           class: 'chip', type: 'button', title: ch.id,
-          onclick: () => { chatIn.value = ch.id; CH.tgChat = ch.id; dirty(); },
+          onclick: () => { chatIn.value = ch.id; fieldCheck(chatIn, chatErr, CHAT_RE, ''); CH.tgChat = ch.id; chatsEl.replaceChildren(); save(); },
         }, `${ch.title || ch.type} · ${ch.id}`)));
       } catch (e) {
-        chatsEl.replaceChildren(h('span', { class: 'bad-ink' }, e.message));
+        chatsEl.replaceChildren(h('span', { class: 'bad-ink', style: { fontSize: '12.5px' } }, e.message));
       }
     }
 
     async function test(channel) {
       try {
         await api('/alerts/test', { method: 'POST', body: { channel, token: tokenIn.value.trim(), chat: chatIn.value.trim() } });
-        toast(channel === 'macos' ? 'Проверочное уведомление отправлено' : 'Проверочное сообщение отправлено в Telegram');
+        toast(channel === 'telegram' ? 'Проверочное сообщение отправлено в Telegram' : 'Проверочное уведомление отправлено');
       } catch (e) { toast('Не удалось отправить', 'bad', e.message); }
     }
 
+    const step = (n, ...kids) => h('div', { class: 'tg-step' }, h('span', { class: 'tg-n', 'aria-hidden': 'true' }, String(n)), h('div', { class: 'field' }, ...kids));
+    const tgSetup = h('div', { class: 'tg-setup' },
+      step(1, h('span', null, 'Токен бота'), tokenIn,
+        h('span', { class: 'hint' }, 'Создайте бота у @BotFather в Telegram и вставьте сюда его токен. Он хранится только на этом компьютере.'), tokenErr),
+      step(2, h('span', null, 'Кому писать'), h('div', { class: 'inline' }, chatIn, findBtn),
+        h('span', { class: 'hint' }, 'Напишите своему боту любое сообщение и нажмите «Найти». Для группы — добавьте бота в группу и напишите там.'), chatErr, chatsEl),
+      step(3, h('span', null, 'Проверка'),
+        h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: () => test('telegram') }, 'Отправить проверочное сообщение'))));
+
+    const chanRow = ({ ico, key, title, desc, extra }) => {
+      const id = `ch-${key}-${++uid}`;
+      const sw = h('input', { type: 'checkbox', class: 'switch', role: 'switch', id, checked: !!CH[key] });
+      sw.addEventListener('change', () => { CH[key] = sw.checked; syncTg(); save(); });
+      return { sw, el: h('div', { class: 'chan' },
+        h('span', { class: 'chan-ico', 'aria-hidden': 'true' }, icon(ico)),
+        h('div', { class: 'arule-main' }, h('label', { class: 'arule-title', for: id }, title), desc),
+        extra || h('span'),
+        sw) };
+    };
+    const local = chanRow({ ico: 'bell', key: 'macos', title: `Уведомления ${osName()}`,
+      desc: h('div', { class: 'arule-desc' }, 'На этом компьютере'),
+      extra: h('button', { class: 'btn ghost sm', type: 'button', onclick: () => test('macos') }, 'Проверить') });
+    const tgDesc = h('div', { class: 'arule-desc' });
+    const tgTest = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => test('telegram') }, 'Проверить');
+    const tg = chanRow({ ico: 'send', key: 'telegram', title: 'Telegram', desc: tgDesc, extra: tgTest });
+    function syncTg() {
+      const ready = tgReady();
+      tgDesc.textContent = ready ? `Бот подключён · чат ${CH.tgChat}` : 'Сообщения от вашего бота';
+      tgTest.hidden = !ready;
+      // настройка видна, пока Telegram включён и не готов, — или по кнопке «Настроить»
+      tgSetup.hidden = !(CH.telegram && (!ready || tgOpen));
+      tgEdit.hidden = !(CH.telegram && ready && !tgOpen);
+    }
+    let tgOpen = false;
+    const tgEdit = h('button', { class: 'btn ghost sm tg-edit', type: 'button', onclick: () => { tgOpen = true; syncTg(); tokenIn.focus(); } }, 'Изменить бота или чат');
+    syncTg();
+
     const channels = h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Куда присылать'))),
-      h('div', { class: 'rules' },
-        h('div', { class: 'rule' }, h('label', { class: 'check' }, chk(CH, 'macos'), `Уведомления ${osName()}`),
-          h('button', { class: 'btn ghost sm', type: 'button', onclick: () => test('macos') }, 'Проверить')),
-        h('div', { class: 'rule' }, h('label', { class: 'check' }, tgChk, 'Telegram')),
-        tgBox));
+      h('div', { class: 'chans' }, local.el, tg.el, tgEdit, tgSetup));
 
-    saveBtn.addEventListener('click', async () => {
-      saveBtn.disabled = true;
-      try {
-        const r = await api('/alerts/config', { method: 'PUT', body: c });
-        this.cfg = r.config;
-        status.textContent = 'сохранено';
-        toast('Настройки оповещений сохранены');
-        this.renderForm();
-      } catch (e) {
-        saveBtn.disabled = false;
-        status.textContent = '';
-        toast('Не сохранено', 'bad', e.message);
-      }
-    });
+    const servers = h('div', { class: 'card' },
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Какие серверы проверять'),
+        h('div', { class: 'card-sub' }, 'Оповещения приходят только по отмеченным'))),
+      this.muteEl);
+    this.renderMute();
 
     this.formEl.replaceChildren(
-      h('div', { class: 'grid two', style: { marginTop: '16px' } }, rules, channels),
-      h('div', { class: 'save-row' }, saveBtn, status));
+      h('div', { class: 'section-title' }, 'Настройки', h('span', { class: 'grow' }), saveState),
+      h('div', { class: 'alerts-grid' }, rules, h('div', { class: 'alerts-side' }, channels, servers)));
   }
 
   async clearEvents() {
