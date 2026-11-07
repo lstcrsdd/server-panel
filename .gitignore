@@ -1,0 +1,19 @@
+# собранные бинарники
+/server-panel
+/server-panel.exe
+/sp-test
+/dist/
+*.exe
+
+# данные панели, если запускали с -data внутри репозитория
+/data/
+settings.json
+alerts.json
+known_hosts
+id_ed25519
+id_ed25519.pub
+*.log
+
+# системное
+.DS_Store
+Thumbs.db

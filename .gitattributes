@@ -1,0 +1,4 @@
+* text=auto eol=lf
+# батник хранится с CRLF как есть — и в клоне, и в ZIP с GitHub
+*.bat -text
+*.png binary

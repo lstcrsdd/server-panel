@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="panel-token" content="__PANEL_TOKEN__">
+<meta name="color-scheme" content="light dark">
+<title>Method Network — серверы</title>
+<link rel="icon" type="image/png" sizes="32x32" href="brand/favicon-32.png">
+<link rel="apple-touch-icon" href="brand/icon-180.png">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side">
+    <div class="brand">
+      <img class="brand-mark" src="brand/mark.png" width="40" height="19" alt="">
+      <span class="brand-text"><span class="brand-name">Method Network</span><span class="brand-sub">Панель серверов</span></span>
+      <span class="conn" id="conn" title="Связь с панелью"></span>
+    </div>
+    <nav class="side-nav">
+      <a class="nav-item" id="nav-fleet" href="#/">
+        <svg class="ico" viewBox="0 0 20 20"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
+        <span>Все серверы</span>
+        <span class="nav-count" id="fleet-count"></span>
+      </a>
+      <a class="nav-item" id="nav-alerts" href="#/alerts">
+        <svg class="ico" viewBox="0 0 20 20"><path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5h-12z"/><path d="M8.5 17.2a1.6 1.6 0 0 0 3 0"/></svg>
+        <span>Оповещения</span>
+        <span class="nav-badge" id="alerts-count" hidden></span>
+      </a>
+      <a class="nav-item" id="nav-commands" href="#/commands">
+        <svg class="ico" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M6.5 8.5l2.2 1.8-2.2 1.8M10.5 12.5h3"/></svg>
+        <span>Команды</span>
+      </a>
+      <a class="nav-item" id="nav-manage" href="#/manage">
+        <svg class="ico" viewBox="0 0 20 20"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
+        <span>Управление</span>
+      </a>
+    </nav>
+    <div class="side-label">Серверы</div>
+    <div class="srv-list" id="srv-list"></div>
+    <div class="side-foot">
+      <button class="btn primary block" id="btn-add" type="button">
+        <svg class="ico" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" stroke-width="2" stroke-linecap="round"/></svg>
+        Добавить сервер
+      </button>
+      <div class="side-foot-row">
+        <button class="btn ghost sm" id="btn-reload" type="button" title="Перечитать ~/.ssh/config">Обновить список</button>
+        <button class="btn ghost sm icon-only" id="btn-theme" type="button" title="Тема оформления" aria-label="Тема оформления">
+          <svg class="ico" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><path d="M10 4a6 6 0 0 1 0 12z" class="fill"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="charts.js"></script>
+<script src="manage.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
