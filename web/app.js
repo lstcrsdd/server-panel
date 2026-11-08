@@ -239,6 +239,18 @@ function rootFS(m) {
   return m.fs.find((f) => f.mount === '/') || m.fs[0];
 }
 
+// разделы с данными — без загрузочных /boot и /boot/efi; корень первым
+function dataFS(m) {
+  const all = (m && m.fs) || [];
+  const list = all.filter((f) => !/^\/boot(\/|$)|^\/efi$/.test(f.mount));
+  return (list.length ? list : all).slice().sort((a, b) => (a.mount === '/' ? -1 : b.mount === '/' ? 1 : a.mount.localeCompare(b.mount)));
+}
+
+// самый заполненный раздел — по нему судят, не пора ли чистить диск
+function fullestFS(m) {
+  return dataFS(m).reduce((a, f) => (!a || f.pct > a.pct ? f : a), null);
+}
+
 function memPct(m) { return m && m.memTotal ? (m.memUsed / m.memTotal) * 100 : 0; }
 
 /* ---------- состояние ---------- */
@@ -526,7 +538,7 @@ class FleetPage {
     el.append(head, h('div', { class: 'fcard-meta', title: meta }, meta));
     const ref = { el, srv };
     if (live || srv.status === 'connecting' && srv.latest) {
-      const mk = (label) => { const m = meter(0); const v = h('span', { class: 'fm-v' }); return { row: h('div', { class: 'fm' }, h('span', { class: 'fm-l' }, label), m.el, v), m, v }; };
+      const mk = (label) => { const m = meter(0); const v = h('span', { class: 'fm-v' }); const l = h('span', { class: 'fm-l' }, label); return { row: h('div', { class: 'fm' }, l, m.el, v), m, v, l }; };
       ref.cpu = mk('CPU'); ref.mem = mk('Память'); ref.disk = mk('Диск /');
       ref.net = h('div', { class: 'fnet' });
       ref.cv = h('canvas', { 'aria-hidden': 'true' });
@@ -557,7 +569,10 @@ class FleetPage {
     ref.cpu.m.set(m.cpu); ref.cpu.v.textContent = Fmt.pct0(m.cpu);
     const mp = memPct(m);
     ref.mem.m.set(mp); ref.mem.v.textContent = Fmt.pct0(mp);
-    const fs = rootFS(m);
+    const parts = dataFS(m);
+    const fs = parts.length > 1 ? fullestFS(m) : rootFS(m);
+    ref.disk.l.textContent = parts.length > 1 ? 'Диски' : 'Диск ' + (fs ? fs.mount : '/');
+    ref.disk.row.title = parts.map((f) => `${f.mount}: ${Fmt.pct0(f.pct)} · ${Fmt.bytes(f.used)} из ${Fmt.bytes(f.size)}`).join('\n');
     ref.disk.m.set(fs ? fs.pct : 0); ref.disk.v.textContent = fs ? Fmt.pct0(fs.pct) : '—';
     ref.net.replaceChildren(
       h('span', null, '↓ ', h('b', null, Fmt.bits(m.netRx * 8))),
@@ -1141,7 +1156,7 @@ class ServerPage {
           h('button', { class: 'btn', type: 'button', onclick: () => reconnect(s.id), title: 'Переподключиться' }, icon('refresh'), 'Переподключить'),
           h('button', { class: 'btn danger', type: 'button', onclick: () => rebootDialog(s) }, icon('power'), 'Перезагрузить'),
           h('button', { class: 'btn icon-only', type: 'button', onclick: () => settingsDialog(s), title: 'Настройки сервера', 'aria-label': 'Настройки сервера' }, icon('gear')))),
-      pinnedNotesStrip(s.id));
+      ...[pinnedNotesStrip(s.id)].filter(Boolean));
     this.updateUptime();
 
     this.alertEl.replaceChildren();
@@ -1234,9 +1249,11 @@ function kpiTile(label) {
   const v = h('div', { class: 'kpi-value' }, '—');
   const sub = h('div', { class: 'kpi-sub' }, NB);
   const m = meter(0);
-  const el = h('div', { class: 'card kpi' }, h('div', { class: 'kpi-label' }, label), v, sub, m.el);
+  const lab = h('div', { class: 'kpi-label' }, label);
+  const el = h('div', { class: 'card kpi' }, lab, v, sub, m.el);
   return {
     el, m,
+    label(t) { if (lab.textContent !== t) lab.textContent = t; },
     set(main, small, subText, pct) {
       v.replaceChildren(main, small ? h('small', null, small) : '');
       sub.textContent = subText || NB;
@@ -1322,9 +1339,11 @@ function overviewTab(page) {
   const rangeNote = h('span', { class: 'muted', style: { fontSize: '12.5px' } });
 
   const rangeSeg = seg(RANGE_LABELS, range, (v) => { range = v; store.set('range', v); load(); });
+  const hw = hardwareSection(id);
 
-  const el = h('div', null,
+  const el = h('div', { class: 'ov' },
     h('div', { class: 'grid kpis' }, Object.values(k).map((t) => t.el)),
+    hw.el,
     h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, 'Период'), rangeSeg.el, rangeNote),
     h('div', { class: 'grid two' },
       chartCard('Процессор', charts.cpu),
@@ -1374,9 +1393,19 @@ function overviewTab(page) {
     }
     k.cpu.set(Fmt.pct(m.cpu), '', `польз. ${Fmt.pct0(m.user)} · сист. ${Fmt.pct0(m.system)} · I/O ${Fmt.pct0(m.iowait)}` + (m.steal >= 1 ? ` · steal ${Fmt.pct0(m.steal)}` : ''), m.cpu);
     k.mem.set(Fmt.bytes(m.memUsed), ` из ${Fmt.bytes(m.memTotal)}`, `кэш ${Fmt.bytes(m.memCache)}` + (m.swapTotal ? ` · swap ${Fmt.bytes(m.swapUsed)} из ${Fmt.bytes(m.swapTotal)}` : ' · swap нет'), memPct(m));
-    const fs = rootFS(m);
-    if (fs) k.disk.set(Fmt.pct(fs.pct), '', `${Fmt.bytes(fs.used)} из ${Fmt.bytes(fs.size)} · свободно ${Fmt.bytes(fs.avail)}`, fs.pct);
-    else k.disk.set('—', '', 'нет данных', null);
+    const parts = dataFS(m);
+    if (parts.length > 1) {
+      const top = fullestFS(m);
+      k.disk.label(`Диски · ${parts.length} ${Fmt.plural(parts.length, 'раздел', 'раздела', 'разделов')}`);
+      k.disk.set(Fmt.pct(top.pct), ' на ' + top.mount, parts.filter((f) => f !== top).map((f) => `${f.mount} ${Fmt.pct0(f.pct)}`).join(' · '), top.pct);
+      k.disk.el.title = parts.map((f) => `${f.mount}: ${Fmt.bytes(f.used)} из ${Fmt.bytes(f.size)}, свободно ${Fmt.bytes(f.avail)}`).join('\n');
+    } else {
+      const fs = rootFS(m);
+      k.disk.label('Диск ' + (fs ? fs.mount : '/'));
+      k.disk.el.title = '';
+      if (fs) k.disk.set(Fmt.pct(fs.pct), '', `${Fmt.bytes(fs.used)} из ${Fmt.bytes(fs.size)} · свободно ${Fmt.bytes(fs.avail)}`, fs.pct);
+      else k.disk.set('—', '', 'нет данных', null);
+    }
     const c = cores();
     k.load.set(Fmt.num(m.load[0], 2), '', `5 мин ${Fmt.num(m.load[1], 2)} · 15 мин ${Fmt.num(m.load[2], 2)} · ядер ${c}`, (m.load[0] / c) * 100);
     k.net.set(Fmt.bits(m.netRx * 8), '', `исходящий ${Fmt.bits(m.netTx * 8)} · диск ${Fmt.rate(m.diskR + m.diskW)}`, null);
@@ -1398,7 +1427,9 @@ function overviewTab(page) {
     });
     if (n) coresSub.textContent = n === 1 ? `одно ядро · сейчас ${Fmt.pct(m.cores[0])}` : `${n} ${Fmt.plural(n, 'ядро', 'ядра', 'ядер')} · в среднем ${Fmt.pct(sum / n)} · больше всего ядро ${maxI} (${Fmt.pct(m.cores[maxI])})`;
     // файловые системы
-    fsEl.replaceChildren(...(m.fs || []).map((f) => {
+    const boot = (f) => /^\/boot(\/|$)|^\/efi$/.test(f.mount);
+    const fsList = (m.fs || []).slice().sort((a, b) => (boot(a) - boot(b)) || (a.mount === '/' ? -1 : b.mount === '/' ? 1 : a.mount.localeCompare(b.mount)));
+    fsEl.replaceChildren(...fsList.map((f) => {
       const mt = meter(f.pct);
       return h('div', { class: 'fs-row' },
         h('div', { class: 'fs-name', title: f.dev }, f.mount, h('span', { class: 'muted' }, f.dev.replace('/dev/', ''))),
@@ -1424,9 +1455,10 @@ function overviewTab(page) {
       }
       redraw();
     },
-    onStatus() { renderNow(srv() && srv().latest); },
+    onStatus() { renderNow(srv() && srv().latest); if (srv() && srv().status === 'online') hw.reload(); },
     destroy() {
       destroyed = true;
+      hw.destroy();
       clearTimeout(reloadT);
       for (const c of Object.values(charts)) c.destroy();
     },
