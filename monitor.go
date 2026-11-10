@@ -43,7 +43,7 @@ func streamScript(interval time.Duration) string {
 	if sec < 1 {
 		sec = 1
 	}
-	return "echo @@I\n" + infoScript + "echo @@E\n" + fmt.Sprintf(`i=0
+	return "echo @@I\n" + infoScript + "echo @@E\n" + tempFuncs + fmt.Sprintf(`i=0
 SC=$(command -v systemctl 2>/dev/null)
 while :; do
   echo @@F
@@ -55,7 +55,7 @@ while :; do
   echo @@L; cat /proc/loadavg
   echo @@S; cat /proc/net/sockstat 2>/dev/null
   if [ $((i %% 10)) -eq 0 ]; then echo @@FS; df -kP 2>/dev/null; fi
-  if [ $((i %% 15)) -eq 0 ] && [ -n "$SC" ]; then
+`+tempTick+`  if [ $((i %% 15)) -eq 0 ] && [ -n "$SC" ]; then
     echo @@U; systemctl list-units --type=service --all --no-legend --no-pager --plain 2>/dev/null | awk -v re='%s' '$3=="failed" || tolower($1) ~ re {print $1, $2, $3, $4}'
   fi
   echo @@E
@@ -163,32 +163,33 @@ type FSStat struct {
 }
 
 type Metrics struct {
-	T         int64       `json:"t"`
-	Uptime    float64     `json:"uptime"`
-	CPU       float64     `json:"cpu"`
-	User      float64     `json:"user"`
-	System    float64     `json:"system"`
-	IOWait    float64     `json:"iowait"`
-	Steal     float64     `json:"steal"`
-	Cores     []float64   `json:"cores"`
-	MemTotal  uint64      `json:"memTotal"`
-	MemUsed   uint64      `json:"memUsed"`
-	MemCache  uint64      `json:"memCache"`
-	MemAvail  uint64      `json:"memAvail"`
-	SwapTotal uint64      `json:"swapTotal"`
-	SwapUsed  uint64      `json:"swapUsed"`
-	NetRx     float64     `json:"netRx"`
-	NetTx     float64     `json:"netTx"`
-	Ifaces    []IfaceStat `json:"ifaces"`
-	DiskR     float64     `json:"diskR"`
-	DiskW     float64     `json:"diskW"`
-	DiskUtil  float64     `json:"diskUtil"`
-	Disks     []DiskStat  `json:"disks"`
-	Load      [3]float64  `json:"load"`
-	ProcsRun  int         `json:"procsRun"`
-	Procs     int         `json:"procs"`
-	TCP       int         `json:"tcp"`
-	FS        []FSStat    `json:"fs"`
+	T         int64        `json:"t"`
+	Uptime    float64      `json:"uptime"`
+	CPU       float64      `json:"cpu"`
+	User      float64      `json:"user"`
+	System    float64      `json:"system"`
+	IOWait    float64      `json:"iowait"`
+	Steal     float64      `json:"steal"`
+	Cores     []float64    `json:"cores"`
+	MemTotal  uint64       `json:"memTotal"`
+	MemUsed   uint64       `json:"memUsed"`
+	MemCache  uint64       `json:"memCache"`
+	MemAvail  uint64       `json:"memAvail"`
+	SwapTotal uint64       `json:"swapTotal"`
+	SwapUsed  uint64       `json:"swapUsed"`
+	NetRx     float64      `json:"netRx"`
+	NetTx     float64      `json:"netTx"`
+	Ifaces    []IfaceStat  `json:"ifaces"`
+	DiskR     float64      `json:"diskR"`
+	DiskW     float64      `json:"diskW"`
+	DiskUtil  float64      `json:"diskUtil"`
+	Disks     []DiskStat   `json:"disks"`
+	Load      [3]float64   `json:"load"`
+	ProcsRun  int          `json:"procsRun"`
+	Procs     int          `json:"procs"`
+	TCP       int          `json:"tcp"`
+	FS        []FSStat     `json:"fs"`
+	Temps     []TempSensor `json:"temps,omitempty"`
 }
 
 // Point — компактная точка истории для графиков.
@@ -210,7 +211,12 @@ type Point struct {
 	L1  float64 `json:"l"`
 	TCP float64 `json:"tcp"`
 	CX  float64 `json:"cx,omitempty"` // максимум CPU за минуту (в минутных точках)
-	Avg bool    `json:"a,omitempty"`  // точка — среднее за минуту
+	// температуры, °C: процессор, видеокарта, самый горячий диск, плата; 0 — нет датчика
+	TC  float64 `json:"tc,omitempty"`
+	TG  float64 `json:"tg,omitempty"`
+	TD  float64 `json:"td,omitempty"`
+	TB  float64 `json:"tb,omitempty"`
+	Avg bool    `json:"a,omitempty"` // точка — среднее за минуту
 }
 
 type cpuRaw [8]uint64 // user nice system idle iowait irq softirq steal
@@ -232,10 +238,15 @@ type frame struct {
 	hasFS     bool
 	units     []UnitState
 	hasUnits  bool
+	tmeta     []tempMeta
+	hasTM     bool
+	tvals     map[string]float64
+	nv        []nvTemp
+	hasNV     bool
 }
 
 func newFrame() *frame {
-	return &frame{cpus: map[string]cpuRaw{}, mem: map[string]uint64{}, net: map[string][2]uint64{}, disk: map[string][3]uint64{}}
+	return &frame{cpus: map[string]cpuRaw{}, mem: map[string]uint64{}, net: map[string][2]uint64{}, disk: map[string][3]uint64{}, tvals: map[string]float64{}}
 }
 
 var (
@@ -292,6 +303,12 @@ func (p *streamParser) line(l string) {
 			}
 			if tag == "U" && p.cur != nil {
 				p.cur.hasUnits = true
+			}
+			if tag == "TM" && p.cur != nil {
+				p.cur.hasTM = true
+			}
+			if tag == "NV" && p.cur != nil {
+				p.cur.hasNV = true
 			}
 		}
 		return
@@ -382,6 +399,18 @@ func (p *streamParser) line(l string) {
 		u := UnitState{Unit: fs[0], Load: fs[1], Active: fs[2], Sub: fs[3], VPN: isVPNUnit(fs[0])}
 		if u.Active == "failed" || (u.VPN && u.Load == "loaded") {
 			f.units = append(f.units, u)
+		}
+	case "TM":
+		if t, ok := parseTempMeta(l); ok {
+			f.tmeta = append(f.tmeta, t)
+		}
+	case "T":
+		if path, v, ok := strings.Cut(l, ":"); ok && strings.HasPrefix(path, "/sys/") {
+			f.tvals[path] = milliC(v)
+		}
+	case "NV":
+		if t, ok := parseNV(l); ok {
+			f.nv = append(f.nv, t)
 		}
 	case "FS":
 		fs := strings.Fields(l)
@@ -571,7 +600,11 @@ type Monitor struct {
 	raw       []Point
 	tiers     []*tier // минутные, 5-минутные и 30-минутные средние
 	units     []UnitState
-	unitsAt   time.Time // когда пришёл последний список служб
+	unitsAt   time.Time          // когда пришёл последний список служб
+	tmeta     []tempMeta         // датчики температуры (последнее сканирование)
+	tlast     map[string]tempVal // последние значения датчиков
+	nv        []nvTemp
+	nvAt      time.Time
 	downSince time.Time // с какого момента нет связи
 	lastFrame time.Time
 	cancel    context.CancelFunc
@@ -868,14 +901,19 @@ func (m *Monitor) ingest(f *frame) {
 		id, units := m.srv.ID, m.units
 		defer m.app.hub.send("units", map[string]any{"id": id, "units": units})
 	}
+	now := time.Now()
+	m.updateTemps(f, now)
 	if prev == nil || f.uptime <= prev.uptime {
 		m.mu.Unlock()
 		return
 	}
 	met := compute(prev, f, f.uptime-prev.uptime)
-	met.T = time.Now().UnixMilli()
+	met.T = now.UnixMilli()
 	met.FS = m.fs
+	var tc, tg, td, tb float64
+	met.Temps, tc, tg, td, tb = m.buildTemps(now)
 	p := pointFrom(met)
+	p.TC, p.TG, p.TD, p.TB = tc, tg, td, tb
 	m.latest = met
 	if max := m.maxRaw(); len(m.raw) >= max {
 		copy(m.raw, m.raw[len(m.raw)-max+1:])
@@ -1003,6 +1041,7 @@ type roller struct {
 	n      int
 	sum    Point
 	cmax   float64
+	tn     [4]int // сколько точек с каждой температурой
 }
 
 func (r *roller) add(p Point) *Point {
@@ -1013,7 +1052,7 @@ func (r *roller) add(p Point) *Point {
 		r.n = 0
 	}
 	if r.n == 0 {
-		r.bucket, r.sum, r.cmax = b, Point{}, 0
+		r.bucket, r.sum, r.cmax, r.tn = b, Point{}, 0, [4]int{}
 	}
 	r.n++
 	s := &r.sum
@@ -1032,6 +1071,21 @@ func (r *roller) add(p Point) *Point {
 	s.DW += p.DW
 	s.L1 += p.L1
 	s.TCP += p.TCP
+	for i, v := range [4]float64{p.TC, p.TG, p.TD, p.TB} {
+		if v > 0 {
+			r.tn[i]++
+			switch i {
+			case 0:
+				s.TC += v
+			case 1:
+				s.TG += v
+			case 2:
+				s.TD += v
+			case 3:
+				s.TB += v
+			}
+		}
+	}
 	peak := p.CPU
 	if p.Avg {
 		peak = p.CX
@@ -1057,7 +1111,15 @@ func (r *roller) result() *Point {
 		Mem: round1(s.Mem / n), MU: math.Round(s.MU / n), MC: math.Round(s.MC / n), MT: s.MT,
 		Rx: math.Round(s.Rx / n), Tx: math.Round(s.Tx / n), DR: math.Round(s.DR / n), DW: math.Round(s.DW / n),
 		L1: round2(s.L1 / n), TCP: math.Round(s.TCP / n), CX: r.cmax, Avg: true,
+		TC: avgTemp(s.TC, r.tn[0]), TG: avgTemp(s.TG, r.tn[1]), TD: avgTemp(s.TD, r.tn[2]), TB: avgTemp(s.TB, r.tn[3]),
 	}
+}
+
+func avgTemp(sum float64, n int) float64 {
+	if n == 0 {
+		return 0
+	}
+	return round1(sum / float64(n))
 }
 
 func (m *Monitor) historyPath() string {

@@ -574,10 +574,12 @@ class FleetPage {
     ref.disk.l.textContent = parts.length > 1 ? 'Диски' : 'Диск ' + (fs ? fs.mount : '/');
     ref.disk.row.title = parts.map((f) => `${f.mount}: ${Fmt.pct0(f.pct)} · ${Fmt.bytes(f.used)} из ${Fmt.bytes(f.size)}`).join('\n');
     ref.disk.m.set(fs ? fs.pct : 0); ref.disk.v.textContent = fs ? Fmt.pct0(fs.pct) : '—';
+    const tc = tempMain(m.temps, 'cpu');
     ref.net.replaceChildren(
       h('span', null, '↓ ', h('b', null, Fmt.bits(m.netRx * 8))),
       h('span', null, '↑ ', h('b', null, Fmt.bits(m.netTx * 8))),
       h('span', null, 'TCP ', h('b', null, Fmt.int(m.tcp))),
+      tc ? h('span', { title: 'Температура процессора' }, 'CPU ', h('b', null, tFmt(tc.c))) : '',
       h('span', null, 'аптайм ', h('b', null, Fmt.dur(m.uptime))));
     drawSpark(ref.cv, s.spark.map((p) => p.c), { max: 100, slots: SPARK_N });
   }
@@ -1341,17 +1343,55 @@ function overviewTab(page) {
   const rangeSeg = seg(RANGE_LABELS, range, (v) => { range = v; store.set('range', v); load(); });
   const hw = hardwareSection(id);
 
+  const chartGrid = h('div', { class: 'grid two' },
+    chartCard('Процессор', charts.cpu),
+    chartCard('Память', charts.mem),
+    chartCard('Сеть', charts.net, 'бит/с, без виртуальных интерфейсов'),
+    chartCard('Диск, ввод-вывод', charts.disk),
+    chartCard('Load average', charts.load, 'средняя очередь задач за 1 минуту'),
+    chartCard('Соединения TCP', charts.tcp));
+
+  // температуры: график появляется, когда у сервера есть датчики; серии — только те, что есть.
+  // Цвет закреплён за компонентом, а не за порядком: процессор всегда s1, плата s2 и т. д.
+  const TEMP_SERIES = [
+    ['cpu', 'tc', { label: 'Процессор', color: 's1', kind: 'line', get: (p) => p.tc }],
+    ['board', 'tb', { label: 'Плата', color: 's2', kind: 'line', get: (p) => p.tb }],
+    ['gpu', 'tg', { label: 'Видеокарта', color: 's3', kind: 'line', get: (p) => p.tg }],
+    ['disk', 'td', { label: 'Диски', color: 's4', kind: 'line', get: (p) => p.td }],
+  ];
+  let tempKey = '';
+  let tempCard = null;
+  function ensureTempChart(temps) {
+    const T = temps || [];
+    const now = {
+      cpu: !!tempMain(T, 'cpu'),
+      board: T.some((t) => t.kind === 'board' && !CPU_LIKE.test(t.label || '')),
+      gpu: T.some((t) => t.kind === 'gpu'),
+      disk: T.some((t) => t.kind === 'disk'),
+    };
+    const kinds = TEMP_SERIES.filter(([kind, key]) => now[kind] || pts.some((p) => p[key] > 0));
+    const key = kinds.map((x) => x[0]).join(',');
+    if (key === tempKey) return;
+    tempKey = key;
+    if (charts.temp) { charts.temp.destroy(); delete charts.temp; }
+    if (tempCard) { tempCard.remove(); tempCard = null; }
+    if (!kinds.length) return;
+    charts.temp = new TimeChart({
+      title: 'Температура', sparse: true, floor: true, fill: false, minTop: 20,
+      fmt: (v) => `${Fmt.num(v, 1)}${NB}°C`, axis: (v) => `${Fmt.int(v)}${NB}°C`,
+      series: kinds.map((x) => x[2]),
+    });
+    tempCard = chartCard('Температура', charts.temp, kinds.some((x) => x[0] === 'disk') ? 'диски — самый горячий из них' : null);
+    tempCard.classList.add('wide');
+    chartGrid.append(tempCard);
+    redraw();
+  }
+
   const el = h('div', { class: 'ov' },
     h('div', { class: 'grid kpis' }, Object.values(k).map((t) => t.el)),
     hw.el,
     h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, 'Период'), rangeSeg.el, rangeNote),
-    h('div', { class: 'grid two' },
-      chartCard('Процессор', charts.cpu),
-      chartCard('Память', charts.mem),
-      chartCard('Сеть', charts.net, 'бит/с, без виртуальных интерфейсов'),
-      chartCard('Диск, ввод-вывод', charts.disk),
-      chartCard('Load average', charts.load, 'средняя очередь задач за 1 минуту'),
-      chartCard('Соединения TCP', charts.tcp)),
+    chartGrid,
     h('div', { class: 'grid two', style: { marginTop: '16px' } },
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Ядра процессора'), coresSub)), coresEl, coresAxis),
       h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, 'Файловые системы')), fsEl)),
@@ -1381,6 +1421,7 @@ function overviewTab(page) {
       rangeNote.textContent = e.message;
     }
     for (const c of Object.values(charts)) c.el.classList.remove('loading');
+    ensureTempChart(srv() && srv().latest && srv().latest.temps);
     redraw();
     if (RANGES[range] > 3600e3) reloadT = setTimeout(load, RANGES[range] > 86400e3 ? 300e3 : 60e3);
   }
@@ -1410,6 +1451,8 @@ function overviewTab(page) {
     k.load.set(Fmt.num(m.load[0], 2), '', `5 мин ${Fmt.num(m.load[1], 2)} · 15 мин ${Fmt.num(m.load[2], 2)} · ядер ${c}`, (m.load[0] / c) * 100);
     k.net.set(Fmt.bits(m.netRx * 8), '', `исходящий ${Fmt.bits(m.netTx * 8)} · диск ${Fmt.rate(m.diskR + m.diskW)}`, null);
     k.tcp.set(Fmt.int(m.tcp), '', `процессов ${Fmt.int(m.procs)} · выполняется ${Fmt.int(m.procsRun)}`, null);
+    hw.temps(m.temps);
+    ensureTempChart(m.temps);
 
     // ядра
     const n = (m.cores || []).length;

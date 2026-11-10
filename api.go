@@ -62,6 +62,7 @@ func (a *App) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/servers/{id}/files/download", a.withMon(a.handleFileDownload))
 	mux.HandleFunc("POST /api/servers/{id}/files/upload", a.withMon(a.handleFileUpload))
 	mux.HandleFunc("GET /api/servers/{id}/hardware", a.withMon(a.handleHardware))
+	mux.HandleFunc("POST /api/servers/{id}/sensors", a.withMon(a.handleSensors))
 	mux.HandleFunc("GET /api/servers/{id}/schedule", a.withMon(a.handleSchedule))
 	mux.HandleFunc("POST /api/servers/{id}/schedule", a.withMon(a.handleAddSchedule))
 	mux.HandleFunc("DELETE /api/servers/{id}/schedule/{tid}", a.withMon(a.handleDeleteSchedule))

@@ -127,6 +127,9 @@ class TimeChart {
    * opts.fmt: формат значения в подсказке, opts.axis: формат подписи оси
    * opts.max: (points, dataMax) => фиксированный верх шкалы или null
    * opts.base: 1024 | 1000 | null — какие шаги шкалы считать «круглыми»
+   * opts.sparse: значение 0/нет — пропуск (линия рвётся), а не ноль
+   * opts.floor: шкала начинается не с нуля, а чуть ниже минимума (температуры)
+   * opts.fill: false — без заливки под линиями
    */
   constructor(opts) {
     this.o = Object.assign({ height: 190, stacked: false, fmt: (v) => Fmt.num(v), axis: null, total: null, minTop: 1 }, opts);
@@ -214,15 +217,25 @@ class TimeChart {
     this.empty.hidden = pts.length > 1;
 
     const ser = o.series;
-    const raw = pts.map((p) => ser.map((s) => Math.max(0, +s.get(p) || 0)));
+    const raw = pts.map((p) => ser.map((s) => {
+      const v = +s.get(p);
+      return o.sparse ? (v > 0 ? v : NaN) : Math.max(0, v || 0);
+    }));
     const vals = o.stacked
       ? raw.map((r) => { let acc = 0; return r.map((v) => (acc += v)); })
       : raw;
-    let dataMax = 0;
-    for (const r of vals) for (const v of r) if (v > dataMax) dataMax = v;
+    let dataMax = 0, dataMin = Infinity;
+    for (const r of vals) for (const v of r) { if (v > dataMax) dataMax = v; if (v < dataMin) dataMin = v; }
     let top = o.max ? o.max(pts, dataMax) : null;
     let ticks;
-    if (top) {
+    let lo = 0;
+    if (o.floor && dataMax > 0) {
+      lo = Math.max(0, Math.floor((dataMin - 5) / 10) * 10);
+      let span;
+      ({ ticks, top: span } = niceTicks(Math.max((dataMax - lo) * 1.1, o.minTop), 4, o.base));
+      ticks = ticks.map((t) => t + lo);
+      top = lo + span;
+    } else if (top) {
       ({ ticks } = niceTicks(top, 4, o.base));
       ticks = ticks.filter((t) => t <= top * 1.0001);
     } else {
@@ -240,7 +253,7 @@ class TimeChart {
     const pw = w - padL - padR, ph = H - padT - padB;
     const span = Math.max(1, this.t1 - this.t0);
     const X = (t) => padL + ((t - this.t0) / span) * pw;
-    const Y = (v) => padT + (1 - v / top) * ph;
+    const Y = (v) => padT + (1 - (v - lo) / (top - lo || 1)) * ph;
 
     // сетка и ось Y
     ctx.lineWidth = 1;
@@ -248,7 +261,7 @@ class TimeChart {
     ctx.textBaseline = 'middle';
     ticks.forEach((t, i) => {
       const y = Math.round(Y(t)) + 0.5;
-      ctx.strokeStyle = t === 0 ? C.axis : C.grid;
+      ctx.strokeStyle = t === lo ? C.axis : C.grid;
       ctx.beginPath();
       ctx.moveTo(padL, y);
       ctx.lineTo(w - padR, y);
@@ -290,7 +303,7 @@ class TimeChart {
     ctx.lineCap = 'round';
     for (const seg of segs) {
       if (seg.length < 2) continue;
-      for (let si = ser.length - 1; si >= 0; si--) {
+      for (let si = ser.length - 1; si >= 0 && !o.sparse && o.fill !== false; si--) {
         const color = C[ser[si].color] || C.s1;
         // заливка
         ctx.beginPath();
@@ -312,9 +325,13 @@ class TimeChart {
       for (let si = 0; si < ser.length; si++) {
         const color = C[ser[si].color] || C.s1;
         ctx.beginPath();
-        seg.forEach((i, k) => {
-          const x = X(pts[i].t), y = Y(vals[i][si]);
-          k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        let pen = false;
+        seg.forEach((i) => {
+          const v = vals[i][si];
+          if (!Number.isFinite(v)) { pen = false; return; }
+          const x = X(pts[i].t), y = Y(v);
+          pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+          pen = true;
         });
         ctx.strokeStyle = color;
         ctx.lineWidth = o.stacked ? 1.5 : 2;
@@ -342,6 +359,7 @@ class TimeChart {
     ctx.lineTo(x, padT + ph);
     ctx.stroke();
     for (let si = 0; si < ser.length; si++) {
+      if (!Number.isFinite(vals[idx][si])) continue;
       const y = Y(vals[idx][si]);
       ctx.beginPath();
       ctx.arc(x, y, 4, 0, Math.PI * 2);
@@ -360,7 +378,7 @@ class TimeChart {
     const per = this.step >= 1800e3 ? 'за 30 минут' : this.step >= 300e3 ? 'за 5 минут' : 'за минуту';
     head.textContent = (span > 20 * 3600e3 ? Fmt.dateTime(p.t, !avg) : Fmt.clock(p.t, !avg)) + (avg ? ` · среднее ${per}` : '');
     tip.append(head);
-    const rows = ser.map((s, si) => [s, raw[idx][si]]);
+    const rows = ser.map((s, si) => [s, raw[idx][si]]).filter(([, v]) => Number.isFinite(v));
     for (const [s, v] of (o.stacked ? rows.slice().reverse() : rows)) {
       tip.append(tipRow(`var(--${s.color})`, o.fmt(v, p), s.label));
     }

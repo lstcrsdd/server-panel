@@ -36,7 +36,7 @@ for f in sys_vendor product_name board_vendor board_name bios_vendor bios_versio
 echo "virt=$(systemd-detect-virt 2>/dev/null)"
 echo "arch=$(uname -m)"
 echo "dmidecode=$([ -z "$D" ] && echo noroot || { command -v dmidecode >/dev/null 2>&1 && echo 1 || echo missing; })"
-`
+` + sensSection
 
 type HWCPU struct {
 	Model   string  `json:"model"`
@@ -58,7 +58,7 @@ type HWGPU struct {
 	Kind   string `json:"kind"` // gpu | virtual | bmc
 	VRAM   int64  `json:"vram,omitempty"`
 	Driver string `json:"driver,omitempty"`
-	slot   string
+	Slot   string `json:"slot,omitempty"` // PCI-адрес без домена: 2b:00.0
 	venID  string
 }
 
@@ -106,6 +106,7 @@ type Hardware struct {
 	Mem      HWMem      `json:"mem"`
 	Disks    []HWDisk   `json:"disks"`
 	Platform HWPlatform `json:"platform"`
+	Sensors  HWSensors  `json:"sensors"`
 }
 
 func (a *App) handleHardware(w http.ResponseWriter, r *http.Request, m *Monitor) {
@@ -294,7 +295,7 @@ func parseGPUs(lspci, sys, nv []string, virt bool) []HWGPU {
 		}
 		venFull = pciIDRe.ReplaceAllString(venFull, "")
 		dev = pciIDRe.ReplaceAllString(dev, "")
-		g := HWGPU{slot: slot, venID: venID}
+		g := HWGPU{Slot: slot, venID: venID}
 		g.Vendor = gpuVendors[venID]
 		if g.Vendor == "" {
 			g.Vendor = shortVendor(bracket.ReplaceAllString(venFull, ""))
@@ -326,7 +327,7 @@ func parseGPUs(lspci, sys, nv []string, virt bool) []HWGPU {
 		vram, _ := strconv.ParseInt(f["vram"], 10, 64)
 		found := false
 		for i := range out {
-			if out[i].slot == slot || strings.HasSuffix(f["slot"], out[i].slot) {
+			if out[i].Slot == slot || strings.HasSuffix(f["slot"], out[i].Slot) {
 				out[i].Driver, out[i].VRAM, found = drv, vram, true
 			}
 		}
@@ -335,7 +336,7 @@ func parseGPUs(lspci, sys, nv []string, virt bool) []HWGPU {
 			if name == "" {
 				name = "Видеоадаптер " + ven
 			}
-			out = append(out, HWGPU{slot: slot, venID: ven, Vendor: gpuVendors[ven], Name: name + " (устройство " + strings.TrimPrefix(f["device"], "0x") + ")",
+			out = append(out, HWGPU{Slot: slot, venID: ven, Vendor: gpuVendors[ven], Name: name + " (устройство " + strings.TrimPrefix(f["device"], "0x") + ")",
 				Kind: gpuKind(ven, virt), Driver: drv, VRAM: vram})
 		}
 	}
@@ -347,7 +348,7 @@ func parseGPUs(lspci, sys, nv []string, virt bool) []HWGPU {
 		}
 		bus := strings.ToLower(strings.TrimSpace(p[0]))
 		for i := range out {
-			if out[i].slot != "" && strings.HasSuffix(bus, strings.ToLower(out[i].slot)) {
+			if out[i].Slot != "" && strings.HasSuffix(bus, strings.ToLower(out[i].Slot)) {
 				if n := strings.TrimSpace(p[1]); n != "" {
 					if !strings.HasPrefix(n, "NVIDIA") {
 						n = "NVIDIA " + n
@@ -642,6 +643,7 @@ func parseHardware(out string) Hardware {
 		Mem:      parseMem(s["MEM"], s["DMIMEM"], dmiState),
 		Disks:    parseDisks(s["DISK"]),
 		Platform: plat,
+		Sensors:  parseSensors(s["SENS"], plat.Virt != ""),
 	}
 	if hw.CPU.Arch == "" {
 		hw.CPU.Arch = arch

@@ -983,3 +983,35 @@ td.nowrap { white-space: nowrap; }
 .hw-skel i:first-of-type { width: 70%; height: 15px; margin-top: 14px; }
 @keyframes hw-pulse { 50% { opacity: 0.45; } }
 @media (prefers-reduced-motion: reduce) { .hw-skel i { animation: none; } .hw-toggle .hw-ico { transition: none; } }
+
+/* ---------- температуры ---------- */
+.grid.two > .wide { grid-column: 1 / -1; }
+.hw-live, .hw-dt { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.hw-t { font-variant-numeric: tabular-nums; }
+.hw-dt { font-size: 12.5px; color: var(--ink-2); }
+.hw-live[hidden], .hw-dt[hidden], .hw-tlist[hidden] { display: none; }
+.hw-li-name .hw-dt { margin-left: auto; }
+.hw-li-name .hw-dt:not([hidden]) + b { margin-left: 10px; }
+.hw-tlvl {
+  display: inline-flex; align-items: center; gap: 3px; padding: 0 6px 0 4px; border-radius: 999px;
+  font-size: 11px; font-weight: 500; color: var(--ink); line-height: 18px;
+}
+.hw-tlvl .ico { width: 12px; height: 12px; }
+.hw-tlvl.warn { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.hw-tlvl.warn .ico { color: var(--warning); }
+.hw-tlvl.crit { background: color-mix(in srgb, var(--critical) 18%, transparent); }
+.hw-tlvl.crit .ico { color: var(--critical); }
+.hw-tlist { display: block; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.hw-cap { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.hw-tdl { margin: 0; padding: 0; border: 0; }
+.hw-tdl dt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.hw-tdl dd { display: flex; align-items: center; gap: 6px; }
+
+.hw-sens { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.hw-grid > .hw-sens { grid-column: 1 / -1; order: 2; }
+.hw-sens .hw-badge { --c: var(--accent); width: 32px; height: 32px; }
+.hw-sens .hw-badge .ico { width: 18px; height: 18px; }
+.hw-sens-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
+.hw-sens-text .muted { font-size: 12.5px; }
+.hw-sens .btn { flex: none; }
+@container (max-width: 560px) { .hw-sens { flex-wrap: wrap; } .hw-sens .btn { margin-left: 44px; } }

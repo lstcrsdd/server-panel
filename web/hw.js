@@ -67,6 +67,85 @@ function memSpeed(s) { return (s || '').replace(/MT\/s/, 'МТ/с').replace(/MHz
 
 function plural(n, a, b, c) { return `${n}${NB}${Fmt.plural(n, a, b, c)}`; }
 
+/* ---------- температуры ---------- */
+
+// пороги по умолчанию «горячо / перегрев», если датчик не сообщает свои
+const T_DEF = { cpu: [85, 95], gpu: [85, 95], ram: [75, 85], hdd: [50, 60], ssd: [70, 80], nvme: [70, 80], disk: [55, 65], board: [70, 85], other: [80, 95] };
+const CPU_LIKE = /cpu|peci|tsi|tctl|tdie|package|core/i;
+
+function tLevel(t, key) {
+  const [dh, dc] = T_DEF[key] || T_DEF[t.kind] || T_DEF.other;
+  const hi = t.high || dh;
+  const cr = t.crit && t.crit > hi ? t.crit : Math.max(dc, hi + 5);
+  return t.c >= cr ? 'crit' : t.c >= hi ? 'warn' : '';
+}
+
+function tFmt(c) { return `${Math.round(c)}${NB}°C`; }
+
+// главный датчик группы: Tdie → Tctl → edge (amdgpu) → Composite (NVMe) → Package → самый горячий
+function tMain(list) {
+  if (!list || !list.length) return null;
+  for (const l of ['Tdie', 'Tctl', 'edge', 'Composite']) {
+    const x = list.find((t) => t.label === l);
+    if (x) return x;
+  }
+  const pkg = list.filter((t) => /^Package id/.test(t.label || ''));
+  const pool = pkg.length ? pkg : list.filter((t) => !/^(junction|mem|hotspot|vram)$/i.test(t.label || ''));
+  return (pool.length ? pool : list).reduce((a, t) => (t.c > a.c ? t : a));
+}
+
+function cpuTemps(T) {
+  const own = T.filter((t) => t.kind === 'cpu');
+  return own.length ? own : T.filter((t) => t.kind === 'board' && CPU_LIKE.test(t.label || ''));
+}
+
+// главная температура вида (для карточек на главной)
+function tempMain(temps, kind) {
+  const T = temps || [];
+  return tMain(kind === 'cpu' ? cpuTemps(T) : T.filter((t) => t.kind === kind));
+}
+
+const BOARD_LABELS = {
+  SYSTIN: 'Система', CPUTIN: 'Сокет процессора', PECI: 'Процессор (PECI)', 'PECI Agent 0': 'Процессор (PECI)',
+  PCH_CHIP_TEMP: 'Чипсет', PCH_CPU_TEMP: 'Чипсет', PCH_CHIP_CPU_MAX_TEMP: 'Чипсет, максимум', PCH_MCH_TEMP: 'Северный мост',
+  Motherboard: 'Плата', Chipset: 'Чипсет', VRM: 'VRM', 'CPU Socket': 'Сокет процессора', T_Sensor: 'Внешний датчик',
+};
+
+function sensorName(t) {
+  const l = t.label || '';
+  if (t.kind === 'other') {
+    if (/^(iwlwifi|mt7|ath|rtw|brcm)/.test(t.chip)) return 'Wi-Fi';
+    if (/^(r8169|igc|igb|ixgbe|i40e|ice|bnxt|mlx|e1000|tg3|atlantic|aq)/.test(t.chip)) return 'Сетевая карта' + (l ? ' · ' + l : '');
+    if (/psu/.test(t.chip)) return 'Блок питания' + (l ? ' · ' + l : '');
+    return t.chip + (l ? ' · ' + l : '');
+  }
+  if (t.chip === 'acpitz') return 'ACPI' + (l ? ' · ' + l : '');
+  let m;
+  if ((m = /^AUXTIN(\d+)$/.exec(l))) return 'Доп. датчик ' + m[1];
+  // nct6683/nct6687 (MSI, Intel): процессор по шине SB-TSI/PECI, термисторы и диоды платы
+  if (/^AMD TSI|^PECI|^Intel PECI/.test(l)) return 'Процессор (по данным платы)';
+  if ((m = /^Thermistor (\d+)$/.exec(l))) return 'Термистор ' + m[1];
+  if ((m = /^Diode (\d+)/.exec(l))) return 'Диод ' + m[1];
+  if ((m = /^SMBus (\d+)$/.exec(l))) return 'Датчик SMBus ' + m[1];
+  return BOARD_LABELS[l] || l || t.chip;
+}
+
+function tTitle(list) {
+  return list.map((t) => `${t.label || t.chip}: ${Fmt.num(t.c, 1)}${NB}°C` + (t.high ? ` (порог ${Math.round(t.high)}${NB}°C)` : '')).join('\n');
+}
+
+function tLevelBadge(lvl) {
+  if (!lvl) return null;
+  return h('span', { class: 'hw-tlvl ' + lvl }, icon('warn'), lvl === 'crit' ? 'перегрев' : 'горячо');
+}
+
+// живое значение: «42 °C» и, если горячо, значок с подписью
+function tValue(list, key) {
+  const m = tMain(list);
+  if (!m) return null;
+  return [h('span', { class: 'hw-t' }, tFmt(m.c)), tLevelBadge(tLevel(m, key))];
+}
+
 /* ---------- плитки ---------- */
 
 function hwTile(kind, title, ico, head, sub, rows, extra) {
@@ -80,7 +159,8 @@ function hwTile(kind, title, ico, head, sub, rows, extra) {
       : null);
 }
 
-function cpuTile(hw) {
+// live(pick, key, opts) — место для живой температуры: pick(temps) → датчики
+function cpuTile(hw, live) {
   const c = hw.cpu || {};
   const virt = hw.platform && hw.platform.virt;
   const parts = [];
@@ -94,13 +174,20 @@ function cpuTile(hw) {
   const base = /@\s+([\d.]+)\s*GHz/i.exec(c.model || '');
   if (!c.maxMHz && base) parts.push(base[1].replace('.', ',') + NB + 'ГГц');
   return hwTile('cpu', 'Процессор', 'cpu', cpuName(c.model) || 'Неизвестный процессор', parts.join(' · '), [
+    ['Температура', live(cpuTemps, 'cpu')],
     ['Кэш L3', c.l3 ? Fmt.bytes(c.l3) : ''],
     ['Архитектура', c.arch],
     virt ? ['Гипервизор', c.hypervisor] : ['Виртуализация', c.virtExt],
   ]);
 }
 
-function gpuTile(hw) {
+function gpuTemps(T, x, n) {
+  const g = T.filter((t) => t.kind === 'gpu');
+  const mine = x.slot ? g.filter((t) => t.dev && t.dev.toLowerCase().endsWith(x.slot.toLowerCase())) : [];
+  return mine.length || n > 1 ? mine : g;
+}
+
+function gpuTile(hw, live) {
   const order = { gpu: 0, bmc: 1, virtual: 2 };
   const g = (hw.gpus || []).slice().sort((a, b) => order[a.kind] - order[b.kind]);
   const tag = (x) => (x.kind === 'virtual' ? h('span', { class: 'hw-tag' }, 'виртуальный') : x.kind === 'bmc' ? h('span', { class: 'hw-tag', title: 'Видеовыход контроллера удалённого управления (BMC)' }, 'BMC') : null);
@@ -111,6 +198,7 @@ function gpuTile(hw) {
   if (g.length === 1) {
     const x = g[0];
     return hwTile('gpu', 'Видеокарта', 'gpu', h('span', { class: 'hw-name-in' }, x.name, tag(x)), null, [
+      ['Температура', live((T) => gpuTemps(T, x, 1), 'gpu')],
       ['Чип', x.chip], ['Видеопамять', x.vram ? Fmt.bytes(x.vram) : ''], ['Драйвер', x.driver || 'не загружен'],
     ]);
   }
@@ -123,11 +211,11 @@ function gpuTile(hw) {
   const real = g.filter((x) => x.kind === 'gpu').length;
   return hwTile('gpu', 'Видеокарты', 'gpu', real ? plural(real, 'видеокарта', 'видеокарты', 'видеокарт') : plural(g.length, 'адаптер', 'адаптера', 'адаптеров'), null, null,
     h('ul', { class: 'hw-list' }, groups.map(({ x, n }) => h('li', null,
-      h('div', { class: 'hw-li-name' }, n > 1 ? `${n}${NB}× ` : '', x.name, tag(x)),
+      h('div', { class: 'hw-li-name' }, h('span', { class: 'hw-trunc' }, n > 1 ? `${n}${NB}× ` : '', x.name, tag(x)), n === 1 ? live((T) => gpuTemps(T, x, g.length), 'gpu', { cls: 'hw-dt' }) : null),
       meta(x) ? h('div', { class: 'hw-li-sub' }, meta(x)) : null))));
 }
 
-function memTile(hw) {
+function memTile(hw, live) {
   const m = hw.mem || {};
   const virt = hw.platform && hw.platform.virt;
   const mods = m.modules || [];
@@ -148,6 +236,10 @@ function memTile(hw) {
   else if (m.dmi === 'missing') note = 'Чтобы увидеть модули памяти, установите dmidecode.';
   const ecc = m.ecc ? (m.ecc === 'None' ? 'нет' : `есть (${m.ecc})`) : '';
   return hwTile('ram', 'Оперативная память', 'ram', head, sub, [
+    ['Температура', live((T) => T.filter((t) => t.kind === 'ram'), 'ram', virt ? null : {
+      empty: 'нет датчика',
+      emptyTitle: 'Ядро не видит датчиков температуры памяти. В модулях DDR5 они встроены и появляются сами; у DDR4 датчик есть не у всех модулей и подключается вручную (драйвер jc42).',
+    })],
     virt ? null : ['Модули', parts.join('; ')],
     installed && Math.abs(installed - m.total) > 64 << 20 ? ['Доступно системе', Fmt.bytes(m.total, 1)] : null,
     virt ? null : ['Максимум', m.max ? Fmt.bytes(m.max) : ''],
@@ -168,7 +260,7 @@ function diskMounts(d) {
     show.length > 3 || rest ? h('span', { class: 'muted' }, ` +${show.length - Math.min(3, show.length) + rest}`) : null);
 }
 
-function diskTile(hw) {
+function diskTile(hw, live) {
   const ds = hw.disks || [];
   if (!ds.length) return hwTile('disk-tile', 'Накопители', 'hdd', h('span', { class: 'muted' }, 'Нет данных'), 'lsblk ничего не вернул', null);
   const total = ds.reduce((a, d) => a + d.size, 0);
@@ -180,12 +272,27 @@ function diskTile(hw) {
       return h('li', { class: 'hw-disk' },
         hwIcon(kico, 'hw-mini'),
         h('div', { class: 'hw-li-main' },
-          h('div', { class: 'hw-li-name' }, h('span', { class: 'hw-trunc', title: d.model || d.name }, d.model || d.name), h('b', null, Fmt.bytes(d.size))),
+          h('div', { class: 'hw-li-name' }, h('span', { class: 'hw-trunc', title: d.model || d.name }, d.model || d.name),
+            live((T) => T.filter((t) => t.kind === 'disk' && (t.dev === d.name || d.name.startsWith(t.dev + 'n'))), d.kind, { cls: 'hw-dt' }),
+            h('b', null, Fmt.bytes(d.size))),
           h('div', { class: 'hw-li-sub' }, d.model ? `${kname} · ${d.name}` : kname, ' · ', diskMounts(d))));
     })));
 }
 
-function platformTile(hw) {
+// датчики платы и прочие (Wi-Fi, сетевые карты) — списком
+function boardTemps(list, el) {
+  const T = list.filter((t) => t.kind === 'board' || t.kind === 'other');
+  el.hidden = !T.length;
+  if (!T.length) return;
+  const show = T.slice(0, 8);
+  el.replaceChildren(h('div', { class: 'hw-cap' }, 'Датчики температуры'),
+    h('dl', { class: 'hw-dl hw-tdl' }, show.map((t) => [
+      h('dt', { title: `${t.chip}${t.label ? ' · ' + t.label : ''}` }, sensorName(t)),
+      h('dd', { title: tTitle([t]) }, h('span', { class: 'hw-t' }, tFmt(t.c)), tLevelBadge(tLevel(t, t.kind)))])),
+    T.length > show.length ? h('div', { class: 'hw-note', title: tTitle(T.slice(show.length)) }, `и ещё ${T.length - show.length}`) : '');
+}
+
+function platformTile(hw, live, act) {
   const p = hw.platform || {};
   if (p.virt) {
     const cont = CONTAINERS.has(p.virt);
@@ -208,7 +315,32 @@ function platformTile(hw) {
   }
   rows.push(['BIOS', [p.bios, p.biosDate ? 'от ' + biosDate(p.biosDate) : ''].filter(Boolean).join(' ')]);
   const server = /сервер|блейд/.test(p.chassis || '');
-  return hwTile('plat', 'Платформа', server ? 'rack' : 'board', head, p.chassis ? p.chassis[0].toUpperCase() + p.chassis.slice(1) : '', rows);
+  const sens = hw.sensors || {};
+  const tile = hwTile('plat', 'Платформа', server ? 'rack' : 'board', head, p.chassis ? p.chassis[0].toUpperCase() + p.chassis.slice(1) : '', rows);
+  tile.append(live(null, 'board', { render: boardTemps }));
+  if (sens.panel && sens.panel.length) {
+    tile.append(h('div', { class: 'hw-note' }, `Драйверы датчиков включены панелью: ${sens.panel.join(', ')}.`,
+      sens.root ? h('button', { class: 'linkbtn', type: 'button', onclick: () => act('disable') }, 'Отключить') : null));
+  }
+  return tile;
+}
+
+// полоса «включить датчики» — если в ядре есть драйверы для дисков или платы
+function sensorsStrip(hw, act) {
+  const s = hw.sensors || {};
+  if ((hw.platform && hw.platform.virt) || !s.missing || !s.missing.length) return null;
+  const what = [];
+  if (s.missing.includes('drivetemp')) what.push('дисков');
+  if (s.missing.some((m) => m !== 'drivetemp')) what.push('материнской платы');
+  const btn = s.root ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => act('enable', btn) }, 'Включить датчики') : null;
+  return h('div', { class: 'card hw-sens' },
+    h('span', { class: 'hw-badge' }, icon('info')),
+    h('div', { class: 'hw-sens-text' },
+      h('div', null, `Температура ${what.join(' и ')} пока не видна`),
+      h('div', { class: 'muted' }, s.root
+        ? 'Нужные драйверы есть в ядре, но не загружены. Панель загрузит их и оставит те, что найдут датчики.'
+        : 'Нужные драйверы есть в ядре, но не загружены. Включить их можно под root или с sudo без пароля.')),
+    btn);
 }
 
 // короткая строка для свёрнутого вида
@@ -232,6 +364,8 @@ function hardwareSection(id) {
   let destroyed = false;
   let busy = false;
   let last = null;
+  let slots = [];
+  let lastT = null;
   const sub = h('span', { class: 'card-sub' });
   const body = h('div', { class: 'hw-grid' });
   const refresh = h('button', { class: 'btn sm icon-only', type: 'button', title: 'Собрать заново', 'aria-label': 'Собрать характеристики заново', onclick: () => load(true) }, icon('refresh'));
@@ -261,9 +395,60 @@ function hardwareSection(id) {
     sub.title = when;
   }
 
+  // место для живой температуры; обновляется из потока метрик (temps)
+  function live(pick, key, opts) {
+    opts = opts || {};
+    const el = h('span', { class: 'hw-live' + (opts.cls ? ' ' + opts.cls : '') });
+    if (opts.render) el.className = 'hw-tlist';
+    el.hidden = true;
+    slots.push({ el, pick, key, opts });
+    return el;
+  }
+
+  function paint(T) {
+    for (const s of slots) {
+      if (s.opts.render) { s.opts.render(T, s.el); continue; }
+      const list = s.pick(T);
+      const v = tValue(list, s.key);
+      const empty = !v && T && s.opts.empty;
+      const show = !!v || !!empty;
+      if (v) { s.el.replaceChildren(...v.filter(Boolean)); s.el.title = tTitle(list); }
+      else if (empty) { s.el.replaceChildren(h('span', { class: 'muted' }, s.opts.empty)); s.el.title = s.opts.emptyTitle || ''; }
+      s.el.hidden = !show;
+      const dd = s.el.parentElement;
+      if (dd && dd.tagName === 'DD') { dd.hidden = !show; if (dd.previousElementSibling) dd.previousElementSibling.hidden = !show; }
+    }
+  }
+
+  async function act(action, btn) {
+    const enable = action === 'enable';
+    const ok = await confirmDialog(enable ? {
+      title: 'Включить датчики температуры?',
+      text: 'Панель загрузит драйверы из ядра сервера: drivetemp — температура SATA-дисков, и драйвер микросхемы мониторинга платы (nct6683, nct6775, it87 и др.). Оставит только те, что найдут свои датчики, и пропишет их в /etc/modules-load.d/method-panel-sensors.conf, чтобы они загружались после перезагрузки. Отключить можно здесь же.',
+      ok: 'Включить',
+    } : {
+      title: 'Отключить драйверы датчиков?',
+      text: 'Панель удалит /etc/modules-load.d/method-panel-sensors.conf и выгрузит драйверы, которые включила. Температуры дисков и платы пропадут.',
+      ok: 'Отключить',
+    });
+    if (!ok) return;
+    if (btn) { btn.disabled = true; btn.replaceChildren(h('span', { class: 'spinner' }), NB + 'Включаю…'); }
+    try {
+      const r = await api(`/servers/${encodeURIComponent(id)}/sensors`, { method: 'POST', body: { action } });
+      if (!enable) toast('Драйверы датчиков отключены');
+      else if (r.modules && r.modules.length) toast('Датчики включены: ' + r.modules.join(', '));
+      else toast('Новых датчиков не нашлось', 'warn', 'Драйверы загрузились, но не нашли на этом сервере ни SATA-дисков с датчиком, ни знакомой микросхемы мониторинга платы.');
+    } catch (e) {
+      toast('Не получилось', 'bad', e.message);
+    }
+    if (!destroyed) load(true);
+  }
+
   function render(v) {
     const hw = v.data;
-    body.replaceChildren(cpuTile(hw), gpuTile(hw), memTile(hw), diskTile(hw), platformTile(hw));
+    slots = [];
+    body.replaceChildren(cpuTile(hw, live), gpuTile(hw, live), memTile(hw, live), diskTile(hw, live), platformTile(hw, live, act), sensorsStrip(hw, act) || '');
+    if (lastT) paint(lastT);
   }
 
   async function load(force) {
@@ -292,5 +477,10 @@ function hardwareSection(id) {
 
   setOpen(open);
   load(false);
-  return { el, destroy() { destroyed = true; }, reload() { if (!last) load(false); } };
+  return {
+    el,
+    destroy() { destroyed = true; },
+    reload() { if (!last) load(false); },
+    temps(T) { lastT = T || []; paint(lastT); },
+  };
 }
