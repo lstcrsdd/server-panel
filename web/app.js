@@ -306,6 +306,10 @@ function connect() {
   });
   es.addEventListener('notes', (e) => setNotes(JSON.parse(e.data)));
   es.addEventListener('scenarios', (e) => setScenarios(JSON.parse(e.data)));
+  es.addEventListener('checks', (e) => {
+    const d = JSON.parse(e.data);
+    if (S.page && S.page.onChecks) S.page.onChecks(d);
+  });
   es.addEventListener('status', (e) => {
     const d = JSON.parse(e.data);
     const s = S.by.get(d.id);
@@ -416,6 +420,11 @@ function updateAlertBadge() {
   b.hidden = !n;
   b.textContent = n ? String(n) : '';
   b.title = n ? S.firing.map((f) => `${f.name}: ${f.text}`).join('\n') : '';
+  const cf = S.firing.filter((f) => f.server.startsWith('check:'));
+  const cb = $('#checks-count');
+  cb.hidden = !cf.length;
+  cb.textContent = cf.length ? String(cf.length) : '';
+  cb.title = cf.map((f) => `${f.name}: ${f.text}`).join('\n');
 }
 
 function highlightSidebar() {
@@ -641,7 +650,7 @@ class FleetPage {
 }
 
 /* ---------- оповещения ---------- */
-const ALERT_KIND = { offline: 'связь', cpu: 'процессор', mem: 'память', disk: 'диск', failed: 'служба', vpn: 'VPN', temp: 'перегрев' };
+const ALERT_KIND = { offline: 'связь', cpu: 'процессор', mem: 'память', disk: 'диск', failed: 'служба', vpn: 'VPN', temp: 'перегрев', check: 'проверка', cert: 'сертификат' };
 
 function sinceText(ms) {
   const sec = (Date.now() - ms) / 1000;
@@ -705,7 +714,7 @@ class AlertsPage {
       this.firingEl.replaceChildren(h('div', { class: 'card ok-card' }, h('span', { class: 'dot online' }), 'Всё в порядке — активных оповещений нет'));
       return;
     }
-    this.firingEl.replaceChildren(h('div', { class: 'card flush' }, h('div', { class: 'firing' }, list.map((f) => h('a', { class: 'fire-row', href: '#/s/' + encodeURIComponent(f.server) },
+    this.firingEl.replaceChildren(h('div', { class: 'card flush' }, h('div', { class: 'firing' }, list.map((f) => h('a', { class: 'fire-row', href: f.server.startsWith('check:') ? '#/checks' : '#/s/' + encodeURIComponent(f.server) },
       h('span', { class: 'dot offline' }),
       h('b', null, f.name),
       h('span', { class: 'fire-text' }, f.text),
@@ -837,7 +846,7 @@ class AlertsPage {
 
     // ---- правила ----
     let uid = 0;
-    const ruleRow = ({ r, key, title, pct, min, minLow = 0, text, hint }) => {
+    const ruleRow = ({ r, key, title, pct, min, days, minLow = 0, text, hint }) => {
       const id = `ar-${key}-${++uid}`;
       const sw = h('input', { type: 'checkbox', class: 'switch', role: 'switch', id, checked: !!r[key] });
       const desc = h('div', { class: 'arule-desc' });
@@ -850,18 +859,21 @@ class AlertsPage {
         desc.textContent = bad ? bad.box.dataset.err : text(r);
       };
       if (pct) p = unitIn(r, 'pct', { min: 1, max: 100, unit: '%', label: `${title}: порог в процентах`, onCheck: () => sync() });
+      if (days) p = unitIn(r, 'days', { min: 1, max: 365, unit: 'дн', label: `${title}: за сколько дней`, onCheck: () => sync() });
       if (min) m = unitIn(r, 'min', { min: minLow, max: 1440, step: 0.5, unit: 'мин', label: `${title}: сколько минут`, onCheck: () => sync() });
       const slot = (x, label) => h('div', { class: 'ap' + (x ? '' : ' ap-none') }, x ? [h('span', { class: 'ap-label' }, label), x.box] : null);
       const row = h('div', { class: 'arule' },
         sw,
         h('div', { class: 'arule-main', title: hint || null }, h('label', { class: 'arule-title', for: id }, title), desc),
-        (pct || min) ? h('div', { class: 'arule-params' }, slot(p, 'порог'), slot(m, 'время')) : null);
+        (pct || min || days) ? h('div', { class: 'arule-params' }, slot(p, 'порог'), slot(m, 'время')) : null);
       sw.addEventListener('change', () => { r[key] = sw.checked; sync(); save(); });
       sync();
       return row;
     };
     const after = (n) => (n > 0 ? `дольше ${fmtN(n)} мин` : 'сразу');
     if (!R.temp) R.temp = { on: true, min: 5 };
+    if (!R.check) R.check = { on: true, min: 3 };
+    if (!R.cert) R.cert = { on: true, days: 14 };
 
     const rules = h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Когда сообщать'),
@@ -883,7 +895,12 @@ class AlertsPage {
           text: (x) => `VPN-служба не работает ${after(x.min)}` }),
         ruleRow({ r: R.temp, key: 'on', title: 'Перегрев', min: true,
           hint: 'Порог — критическая температура из датчика, а если датчик её не сообщает: процессор и видеокарта 95 °C, SSD 80 °C, HDD 60 °C',
-          text: (x) => `Процессор, видеокарта или диск горячее порога ${after(x.min)}` })),
+          text: (x) => `Процессор, видеокарта или диск горячее порога ${after(x.min)}` }),
+        ruleRow({ r: R.check, key: 'on', title: 'Сайт или порт не отвечает', min: true,
+          hint: 'Проверки со страницы «Сайты и порты» — панель выполняет их с этого компьютера раз в минуту',
+          text: (x) => `Проверка со страницы «Сайты и порты» не проходит ${after(x.min)}` }),
+        ruleRow({ r: R.cert, key: 'on', title: 'Сертификат скоро истекает', days: true,
+          text: (x) => `Осталось меньше ${plural(x.days, 'дня', 'дней', 'дней')} или сертификат не проходит проверку` })),
       h('div', { class: 'arules arules-extra' },
         ruleRow({ r: R, key: 'recovery', title: 'Сообщать о восстановлении',
           text: () => 'Отдельное сообщение, когда проблема прошла' })));
@@ -1246,7 +1263,7 @@ class CommandsPage {
   destroy() {}
 }
 
-const PAGES = { fleet: FleetPage, alerts: AlertsPage, commands: CommandsPage, scenarios: ScenariosPage, schedule: SchedulePage, notes: NotesPage, manage: ManagePage };
+const PAGES = { fleet: FleetPage, alerts: AlertsPage, checks: ChecksPage, commands: CommandsPage, scenarios: ScenariosPage, schedule: SchedulePage, notes: NotesPage, manage: ManagePage };
 
 /* ---------- страница сервера ---------- */
 const TAB_DEFS = [

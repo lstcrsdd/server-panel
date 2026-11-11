@@ -59,6 +59,7 @@ type Settings struct {
 
 	Notes     []*Note     `json:"notes,omitempty"`     // заметки пользователя
 	Scenarios []*Scenario `json:"scenarios,omitempty"` // сохранённые сценарии
+	Checks    []*Check    `json:"checks,omitempty"`    // проверки сайтов и портов снаружи
 }
 
 type App struct {
@@ -80,6 +81,7 @@ type App struct {
 	alerts *Alerts
 	terms  *termManager
 	wsync  watchSync
+	chk    *checker
 }
 
 func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, error) {
@@ -115,6 +117,7 @@ func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, er
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 	a.loadSettings()
 	a.alerts = newAlerts(a, notify)
+	a.chk = newChecker()
 	a.terms = newTermManager()
 	return a, nil
 }
@@ -122,6 +125,7 @@ func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, er
 func (a *App) Start() {
 	a.syncServers()
 	go a.alerts.run(a.ctx)
+	go a.runChecks(a.ctx)
 	go a.reapTerms()
 	go func() {
 		t := time.NewTicker(5 * time.Minute)

@@ -25,20 +25,23 @@ import (
 // Rule — одно правило: включено, порог в процентах и сколько минут условие
 // должно держаться.
 type Rule struct {
-	On  bool    `json:"on"`
-	Pct float64 `json:"pct,omitempty"`
-	Min float64 `json:"min,omitempty"`
+	On   bool    `json:"on"`
+	Pct  float64 `json:"pct,omitempty"`
+	Min  float64 `json:"min,omitempty"`
+	Days int     `json:"days,omitempty"`
 }
 
 type AlertRules struct {
-	Offline  Rule  `json:"offline"`        // нет связи N мин
-	CPU      Rule  `json:"cpu"`            // процессор в среднем ≥ X% за N мин
-	Mem      Rule  `json:"mem"`            // память ≥ X% за N мин
-	Disk     Rule  `json:"disk"`           // файловая система заполнена ≥ X%
-	Failed   Rule  `json:"failed"`         // служба перешла в состояние ошибки
-	VPN      Rule  `json:"vpn"`            // VPN-служба не работает N мин
-	Temp     *Rule `json:"temp,omitempty"` // перегрев дольше N мин; nil — по умолчанию (в старых настройках его нет)
-	Recovery bool  `json:"recovery"`       // сообщать о восстановлении
+	Offline  Rule  `json:"offline"`         // нет связи N мин
+	CPU      Rule  `json:"cpu"`             // процессор в среднем ≥ X% за N мин
+	Mem      Rule  `json:"mem"`             // память ≥ X% за N мин
+	Disk     Rule  `json:"disk"`            // файловая система заполнена ≥ X%
+	Failed   Rule  `json:"failed"`          // служба перешла в состояние ошибки
+	VPN      Rule  `json:"vpn"`             // VPN-служба не работает N мин
+	Temp     *Rule `json:"temp,omitempty"`  // перегрев дольше N мин; nil — по умолчанию (в старых настройках его нет)
+	Check    *Rule `json:"check,omitempty"` // сайт или порт не отвечает дольше N мин (checks.go); nil — по умолчанию
+	Cert     *Rule `json:"cert,omitempty"`  // сертификат истекает через N дней или не проходит проверку
+	Recovery bool  `json:"recovery"`        // сообщать о восстановлении
 }
 
 type AlertChannels struct {
@@ -54,7 +57,22 @@ type AlertConfig struct {
 	Watch    WatchCfg      `json:"watch"` // сторож на серверах (watchdog.go)
 }
 
-func defaultTempRule() *Rule { return &Rule{On: true, Min: 5} }
+func defaultTempRule() *Rule  { return &Rule{On: true, Min: 5} }
+func defaultCheckRule() *Rule { return &Rule{On: true, Min: 3} }
+func defaultCertRule() *Rule  { return &Rule{On: true, Days: 14} }
+
+// fillRules подставляет значения по умолчанию для правил, которых нет в старых настройках.
+func fillRules(r *AlertRules, from AlertRules) {
+	if r.Temp == nil {
+		r.Temp = from.Temp
+	}
+	if r.Check == nil {
+		r.Check = from.Check
+	}
+	if r.Cert == nil {
+		r.Cert = from.Cert
+	}
+}
 
 func defaultAlertConfig() AlertConfig {
 	return AlertConfig{
@@ -66,6 +84,8 @@ func defaultAlertConfig() AlertConfig {
 			Failed:   Rule{On: true},
 			VPN:      Rule{On: true, Min: 1},
 			Temp:     defaultTempRule(),
+			Check:    defaultCheckRule(),
+			Cert:     defaultCertRule(),
 			Recovery: true,
 		},
 		Channels: AlertChannels{MacOS: true},
@@ -79,9 +99,7 @@ func (a *App) alertConfig() AlertConfig {
 		return defaultAlertConfig()
 	}
 	c := *a.settings.Alerts
-	if c.Rules.Temp == nil {
-		c.Rules.Temp = defaultTempRule()
-	}
+	fillRules(&c.Rules, defaultAlertConfig().Rules)
 	return c
 }
 
@@ -433,6 +451,68 @@ func (al *Alerts) evaluate() {
 		}
 	}
 
+	// проверки снаружи (checks.go). Если ни один сервер не на связи, скорее
+	// всего, нет сети у этого компьютера — тогда о сайтах ничего не решаем.
+	netOK, anyMon := false, false
+	for _, m := range mons {
+		m.mu.RLock()
+		if m.srv.Monitor && !m.srv.Hidden {
+			anyMon = true
+			netOK = netOK || m.status == "online"
+		}
+		m.mu.RUnlock()
+	}
+	netOK = netOK || !anyMon
+	checks, results := al.a.checksState()
+	for i := range checks {
+		c := &checks[i]
+		if c.Off {
+			continue
+		}
+		if c.Server != "" {
+			if m := al.a.monitor(c.Server); m != nil {
+				if s := m.server(); s.Mute || s.Hidden {
+					continue
+				}
+			}
+		}
+		id := "check:" + c.ID
+		active[id] = true
+		res := results[c.ID]
+		t, err := parseCheckTarget(c.Target)
+		if res == nil || !netOK || err != nil {
+			continue
+		}
+		name := checkLabel(c)
+		evaluated[id+"|check"] = true
+		if r.Check.On && !res.OK {
+			conds = append(conds, cond{key: id + "|check|", server: id, name: name, kind: "check", subject: c.Target,
+				text: "не отвечает: " + res.Err, wait: time.Duration(r.Check.Min * float64(time.Minute)), start: time.UnixMilli(res.Since)})
+		}
+		// о сертификате судим, только когда он получен
+		if res.Cert == nil && t.tls() {
+			continue
+		}
+		evaluated[id+"|cert"] = true
+		if !r.Cert.On || res.Cert == nil {
+			continue
+		}
+		ce := res.Cert
+		exp := time.UnixMilli(ce.NotAfter).Format("02.01.2006")
+		who := "сертификат " + ce.Host // имя хоста не повторяем, если оно уже в названии
+		if strings.Contains(name, ce.Host) {
+			who = "сертификат"
+		}
+		switch {
+		case ce.Err != "":
+			conds = append(conds, cond{key: id + "|cert|", server: id, name: name, kind: "cert", subject: ce.Host,
+				text: who + ": " + ce.Err})
+		case ce.Days < r.Cert.Days:
+			conds = append(conds, cond{key: id + "|cert|", server: id, name: name, kind: "cert", subject: ce.Host,
+				text: fmt.Sprintf("%s истекает через %d %s (%s)", who, ce.Days, plural(ce.Days, "день", "дня", "дней"), exp)})
+		}
+	}
+
 	var fired, resolved []*Firing
 	var silent bool
 	cur := map[string]bool{}
@@ -542,6 +622,10 @@ func recoveryText(f *Firing, now time.Time) string {
 		return "служба " + strings.TrimSuffix(f.Subject, ".service") + " больше не в ошибке"
 	case "vpn":
 		return "VPN-служба " + strings.TrimSuffix(f.Subject, ".service") + " снова работает (не работала " + d + ")"
+	case "check":
+		return "снова отвечает (не отвечал " + d + ")"
+	case "cert":
+		return "сертификат " + f.Subject + " в порядке"
 	case "temp":
 		switch {
 		case f.Subject == "cpu":
@@ -851,14 +935,16 @@ func (a *App) handleAlertConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "неверный запрос")
 		return
 	}
-	if req.Rules.Temp == nil {
-		req.Rules.Temp = a.alertConfig().Rules.Temp
-	}
+	fillRules(&req.Rules, a.alertConfig().Rules)
 	rr := req.Rules
+	if rr.Cert.Days < 1 || rr.Cert.Days > 365 {
+		writeErr(w, 400, "срок сертификата — от 1 до 365 дней")
+		return
+	}
 	for _, x := range []struct {
 		r   Rule
 		pct bool
-	}{{rr.Offline, false}, {rr.CPU, true}, {rr.Mem, true}, {rr.Disk, true}, {rr.VPN, false}, {*req.Rules.Temp, false}} {
+	}{{rr.Offline, false}, {rr.CPU, true}, {rr.Mem, true}, {rr.Disk, true}, {rr.VPN, false}, {*rr.Temp, false}, {*rr.Check, false}} {
 		if err := validRule(x.r, x.pct); err != nil {
 			writeErr(w, 400, err.Error())
 			return
