@@ -775,9 +775,9 @@ td.nowrap { white-space: nowrap; }
 .tbl.files td { padding-top: 7px; padding-bottom: 7px; }
 .frow { cursor: pointer; }
 .frow:hover td { background: var(--surface-2); }
-.frow.fhidden .fname span:first-of-type { color: var(--ink-2); }
-.fname { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.fname > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow.fhidden .fname-in > span:first-of-type { color: var(--ink-2); }
+.fname-in { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fname-in > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ficon { flex: none; color: var(--muted); }
 .ficon.d { color: var(--accent); }
 .ficon.d path { fill: var(--accent-wash); }

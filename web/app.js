@@ -2090,8 +2090,10 @@ function filesTab(page) {
       });
       // не «dot»: этот класс занят точкой статуса (8×8 px), строка схлопнулась бы в кружок
       const tr = h('tr', { class: 'frow' + (e.name.startsWith('.') ? ' fhidden' : ''), tabindex: '0' },
-        h('td', { class: 'fname' }, fileIcon(e.type === 'l' ? 'l' : dir ? 'd' : 'f'), h('span', null, e.name),
-          e.type === 'l' ? h('span', { class: 'muted mono flink' }, '→ ' + e.link) : null),
+        // flex — на внутреннем div, не на td: ячейка с display:flex в Safari выпадает из таблицы и не тянется на высоту строки
+        h('td', { class: 'fname' }, h('div', { class: 'fname-in' },
+          fileIcon(e.type === 'l' ? 'l' : dir ? 'd' : 'f'), h('span', null, e.name),
+          e.type === 'l' ? h('span', { class: 'muted mono flink' }, '→ ' + e.link) : null)),
         h('td', { class: 'num' }, dir ? '' : Fmt.bytes(e.size)),
         h('td', { class: 'nowrap muted' }, fileTime(e.mtime)),
         h('td', { class: 'mono muted', title: e.mode }, fmtMode(e.type, e.mode)),
