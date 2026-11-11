@@ -1271,6 +1271,18 @@ function chartCard(title, chart, sub) {
     chart.el);
 }
 
+// Классы ширины вместо @container: ResizeObserver отмечает, какие пороги ширина
+// элемента перешла (см. комментарий у .ov в style.css).
+function widthClasses(el, steps) {
+  const ro = new ResizeObserver(([e]) => {
+    const w = e.contentRect.width;
+    if (!w) return;
+    for (const [cls, test] of steps) el.classList.toggle(cls, test(w));
+  });
+  ro.observe(el);
+  return ro;
+}
+
 function overviewTab(page) {
   const id = page.id;
   const srv = () => S.by.get(id);
@@ -1400,6 +1412,8 @@ function overviewTab(page) {
         h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
           h('thead', null, h('tr', null, h('th', null, 'Интерфейс'), h('th', { class: 'num' }, '↓'), h('th', { class: 'num' }, '↑'), h('th', { class: 'num' }, 'Всего ↓ / ↑'))), ifEl)))));
 
+  const widthRO = widthClasses(el, [['w-s', (w) => w <= 560], ['w-m', (w) => w >= 600], ['w-l', (w) => w >= 1080], ['w-xl', (w) => w >= 1280]]);
+
   function redraw() {
     const now = Date.now();
     const t0 = now - RANGES[range];
@@ -1501,6 +1515,7 @@ function overviewTab(page) {
     onStatus() { renderNow(srv() && srv().latest); if (srv() && srv().status === 'online') hw.reload(); },
     destroy() {
       destroyed = true;
+      widthRO.disconnect();
       hw.destroy();
       clearTimeout(reloadT);
       for (const c of Object.values(charts)) c.destroy();

@@ -903,11 +903,13 @@ td.nowrap { white-space: nowrap; }
 
 /* ---------- обзор: плитки и характеристики ----------
    Сетки считаются от ширины самой вкладки, а не окна: так шесть плиток не
-   распадаются на 5 + 1, а пять плиток железа — на 4 + 1. */
-.ov { container-type: inline-size; }
+   распадаются на 5 + 1, а пять плиток железа — на 4 + 1. Ширину отмечают
+   классы, которые ставит overviewTab: w-s ≤ 560, w-m ≥ 600, w-l ≥ 1080,
+   w-xl ≥ 1280 px. Не @container: в Safari размерный контейнер при каждом
+   обновлении данных на миг укорачивал страницу и сбивал прокрутку вверх. */
 .ov > .grid.kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@container (min-width: 1280px) { .ov > .grid.kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-@container (max-width: 560px) { .ov > .grid.kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ov.w-xl > .grid.kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ov.w-s > .grid.kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 .hw { margin-bottom: 16px; }
 .hw-head { display: flex; align-items: center; gap: 10px; min-height: 26px; margin-bottom: 10px; }
@@ -918,19 +920,16 @@ td.nowrap { white-space: nowrap; }
 .hw-toggle .hw-ico { width: 14px; height: 14px; transition: transform 0.2s ease; }
 .hw.closed .hw-toggle .hw-ico { transform: rotate(-90deg); }
 .hw.closed .hw-head { margin-bottom: 0; }
-@container (max-width: 560px) { .hw-toggle span { display: none; } .hw-toggle { width: 26px; padding: 0; justify-content: center; } }
+.ov.w-s .hw-toggle span { display: none; }
+.ov.w-s .hw-toggle { width: 26px; padding: 0; justify-content: center; }
 
 .hw-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
-@container (min-width: 600px) {
-  .hw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hw-grid > .hw-disk-tile, .hw-grid > .hw-err { grid-column: 1 / -1; order: 1; }
-}
-@container (min-width: 1080px) {
-  .hw-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .hw-grid > .hw-tile { grid-column: span 2; }
-  .hw-grid > .hw-disk-tile, .hw-grid > .hw-plat { grid-column: span 3; order: 0; }
-  .hw-grid > .hw-err { grid-column: 1 / -1; }
-}
+.ov.w-m .hw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ov.w-m .hw-grid > .hw-disk-tile, .ov.w-m .hw-grid > .hw-err { grid-column: 1 / -1; order: 1; }
+.ov.w-l .hw-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ov.w-l .hw-grid > .hw-tile { grid-column: span 2; }
+.ov.w-l .hw-grid > .hw-disk-tile, .ov.w-l .hw-grid > .hw-plat { grid-column: span 3; order: 0; }
+.ov.w-l .hw-grid > .hw-err { grid-column: 1 / -1; }
 
 .hw-tile { display: flex; flex-direction: column; padding: 14px 16px; }
 .hw-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
@@ -1014,4 +1013,5 @@ td.nowrap { white-space: nowrap; }
 .hw-sens-text { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
 .hw-sens-text .muted { font-size: 12.5px; }
 .hw-sens .btn { flex: none; }
-@container (max-width: 560px) { .hw-sens { flex-wrap: wrap; } .hw-sens .btn { margin-left: 44px; } }
+.ov.w-s .hw-sens { flex-wrap: wrap; }
+.ov.w-s .hw-sens .btn { margin-left: 44px; }
