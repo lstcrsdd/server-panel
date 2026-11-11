@@ -2088,7 +2088,8 @@ function filesTab(page) {
           { label: 'Удалить', danger: true, run: () => remove(e) },
         ].filter(Boolean));
       });
-      const tr = h('tr', { class: 'frow' + (e.name.startsWith('.') ? ' dot' : ''), tabindex: '0' },
+      // не «dot»: этот класс занят точкой статуса (8×8 px), строка схлопнулась бы в кружок
+      const tr = h('tr', { class: 'frow' + (e.name.startsWith('.') ? ' fhidden' : ''), tabindex: '0' },
         h('td', { class: 'fname' }, fileIcon(e.type === 'l' ? 'l' : dir ? 'd' : 'f'), h('span', null, e.name),
           e.type === 'l' ? h('span', { class: 'muted mono flink' }, '→ ' + e.link) : null),
         h('td', { class: 'num' }, dir ? '' : Fmt.bytes(e.size)),
