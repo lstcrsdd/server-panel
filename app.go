@@ -79,6 +79,7 @@ type App struct {
 
 	alerts *Alerts
 	terms  *termManager
+	wsync  watchSync
 }
 
 func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, error) {

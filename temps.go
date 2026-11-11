@@ -277,6 +277,71 @@ func gpuMain(label string) bool {
 
 func diskMain(label string) bool { return label == "" || label == "Composite" }
 
+// tempAlarm — температура, которую проверяет правило «Перегрев».
+type tempAlarm struct {
+	subj, who string  // cpu | gpu:<устройство> | disk:<устройство>; как назвать в сообщении
+	c, crit   float64 // сейчас и порог
+}
+
+// tempAlarms — главный датчик процессора и каждой видеокарты и каждого диска
+// с порогом: критическая температура из драйвера, а если её нет — обычная
+// для такого устройства (те же правила у сторожа на сервере).
+func tempAlarms(ts []TempSensor) []tempAlarm {
+	var out []tempAlarm
+	if c := mainCPU(ts); c > 0 {
+		crit := 0.0
+		for _, t := range ts {
+			if t.Kind == "cpu" && t.Crit > crit {
+				crit = t.Crit
+			}
+		}
+		if crit == 0 {
+			crit = 95
+		}
+		out = append(out, tempAlarm{"cpu", "процессор", c, crit})
+	}
+	type dev struct {
+		kind, dev, chip string
+		main            bool
+		c, crit         float64
+	}
+	var devs []*dev
+	byKey := map[string]*dev{}
+	for _, t := range ts {
+		if t.Kind != "gpu" && t.Kind != "disk" {
+			continue
+		}
+		main := (t.Kind == "gpu" && gpuMain(t.Label)) || (t.Kind == "disk" && diskMain(t.Label))
+		k := t.Kind + ":" + t.Dev
+		d := byKey[k]
+		if d == nil {
+			d = &dev{kind: t.Kind, dev: t.Dev, chip: t.Chip}
+			byKey[k] = d
+			devs = append(devs, d)
+		}
+		if (main && !d.main) || (main == d.main && t.C > d.c) {
+			d.main, d.c, d.crit = main, t.C, t.Crit
+		}
+	}
+	for _, d := range devs {
+		crit := d.crit
+		who := "видеокарта"
+		if d.kind == "disk" {
+			who = strings.TrimSpace("диск " + d.dev)
+			if crit == 0 {
+				crit = 80
+				if d.chip == "drivetemp" {
+					crit = 60
+				}
+			}
+		} else if crit == 0 {
+			crit = 95
+		}
+		out = append(out, tempAlarm{d.kind + ":" + d.dev, who, d.c, crit})
+	}
+	return out
+}
+
 // mainPer — самый горячий из «главных» датчиков каждого устройства.
 func mainPer(ts []TempSensor, kind string, main func(string) bool) float64 {
 	mx := 0.0

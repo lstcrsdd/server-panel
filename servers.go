@@ -661,6 +661,9 @@ func (a *App) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	if connChanged {
 		go m.restart(a.ctx)
 	}
+	if req.Name != nil || req.Mute != nil {
+		a.syncWatchdogs()
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 

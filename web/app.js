@@ -641,7 +641,7 @@ class FleetPage {
 }
 
 /* ---------- оповещения ---------- */
-const ALERT_KIND = { offline: 'связь', cpu: 'процессор', mem: 'память', disk: 'диск', failed: 'служба', vpn: 'VPN' };
+const ALERT_KIND = { offline: 'связь', cpu: 'процессор', mem: 'память', disk: 'диск', failed: 'служба', vpn: 'VPN', temp: 'перегрев' };
 
 function sinceText(ms) {
   const sec = (Date.now() - ms) / 1000;
@@ -658,6 +658,7 @@ class AlertsPage {
     this.firingEl = h('div');
     this.eventsEl = h('tbody');
     this.muteEl = h('div', { class: 'mute-list' });
+    this.wdEl = h('div', { class: 'wd-list' });
     this.formEl = h('div', null, h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), ' Загрузка…'));
     this.noteEl = h('div');
     this.el.append(
@@ -733,7 +734,13 @@ class AlertsPage {
     }
   }
 
-  onData() { this.renderMute(); }
+  onData() {
+    this.renderMute();
+    // сервер появился, пропал или сменил связь — строки сторожа запрашиваются заново
+    if (this.wdKey != null && this.wdKey !== this.wdSig()) this.renderWatch();
+  }
+
+  wdSig() { return S.servers.filter((s) => !s.hidden).map((s) => `${s.id}:${s.status === 'online' ? 1 : 0}:${s.name}`).join(','); }
 
   renderMute() {
     const vis = S.servers.filter((s) => !s.hidden);
@@ -797,6 +804,10 @@ class AlertsPage {
         }
         if (CH.telegram && !tgReady()) setState('Сохранено. Telegram заработает, когда будут токен и chat id', 'warn');
         else setState('Сохранено', 'ok');
+        if (S.servers.some((s) => s.info && s.info.watchdog)) {
+          clearTimeout(page.wdT);
+          page.wdT = setTimeout(() => page.renderWatch(), 12e3);
+        }
       } catch (e) {
         setState('Не сохранено: ' + e.message, 'bad');
       } finally {
@@ -850,6 +861,7 @@ class AlertsPage {
       return row;
     };
     const after = (n) => (n > 0 ? `дольше ${fmtN(n)} мин` : 'сразу');
+    if (!R.temp) R.temp = { on: true, min: 5 };
 
     const rules = h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Когда сообщать'),
@@ -868,7 +880,10 @@ class AlertsPage {
           text: () => 'Служба systemd в состоянии failed дольше 50 секунд' }),
         ruleRow({ r: R.vpn, key: 'on', title: 'VPN перестал работать', min: true,
           hint: 'xray, AmneziaWG, WireGuard, MTProto, sing-box, Hysteria и другие — если панель видела службу работающей, а потом она остановилась',
-          text: (x) => `VPN-служба не работает ${after(x.min)}` })),
+          text: (x) => `VPN-служба не работает ${after(x.min)}` }),
+        ruleRow({ r: R.temp, key: 'on', title: 'Перегрев', min: true,
+          hint: 'Порог — критическая температура из датчика, а если датчик её не сообщает: процессор и видеокарта 95 °C, SSD 80 °C, HDD 60 °C',
+          text: (x) => `Процессор, видеокарта или диск горячее порога ${after(x.min)}` })),
       h('div', { class: 'arules arules-extra' },
         ruleRow({ r: R, key: 'recovery', title: 'Сообщать о восстановлении',
           text: () => 'Отдельное сообщение, когда проблема прошла' })));
@@ -960,6 +975,7 @@ class AlertsPage {
       // настройка видна, пока Telegram включён и не готов, — или по кнопке «Настроить»
       tgSetup.hidden = !(CH.telegram && (!ready || tgOpen));
       tgEdit.hidden = !(CH.telegram && ready && !tgOpen);
+      if (page.wdSync) page.wdSync();
     }
     let tgOpen = false;
     const tgEdit = h('button', { class: 'btn ghost sm tg-edit', type: 'button', onclick: () => { tgOpen = true; syncTg(); tokenIn.focus(); } }, 'Изменить бота или чат');
@@ -975,9 +991,143 @@ class AlertsPage {
       this.muteEl);
     this.renderMute();
 
+    // ---- сторож на серверах ----
+    const W = c.watch || (c.watch = {});
+    if (W.restartVpn == null) W.restartVpn = true;
+    const wdNote = h('div', { class: 'alert warn wd-note' }, icon('warn'),
+      h('div', null, 'Сторож пишет в Telegram — сначала подключите его в карточке «Куда присылать».'));
+    this.wdReady = () => !!CH.telegram && tgReady();
+    this.wdSync = () => {
+      wdNote.hidden = this.wdReady();
+      for (const b of this.wdEl.querySelectorAll('[data-wd-install]')) b.disabled = !this.wdReady();
+    };
+    const wdRefresh = h('button', { class: 'btn ghost sm icon-only', type: 'button', title: 'Обновить состояние', 'aria-label': 'Обновить состояние сторожей', onclick: () => this.renderWatch() }, icon('refresh'));
+    const watch = h('div', { class: 'card wd-card' },
+      h('div', { class: 'card-head' },
+        h('div', null, h('div', { class: 'card-title' }, 'Сторож на серверах'),
+          h('div', { class: 'card-sub' }, 'Проверяет сервер сам, раз в минуту, и пишет в Telegram — даже когда этот компьютер выключен')),
+        h('div', { class: 'right' }, wdRefresh)),
+      h('p', { class: 'wd-about' },
+        'Сторож — небольшой скрипт с таймером systemd на самом сервере. Он следит за тем, что включено в «Когда сообщать»: VPN-службы, службы с ошибкой, место на дисках, перегрев, — и сообщает о перезагрузке. ',
+        'Пока на сервере стоит сторож, панель не дублирует эти события в Telegram. Что сервер недоступен, по-прежнему сообщает панель: сам о себе сервер этого не скажет.'),
+      wdNote,
+      h('div', { class: 'arules arules-extra wd-opts' },
+        ruleRow({ r: W, key: 'restartVpn', title: 'Перезапускать упавшие VPN-службы',
+          text: () => 'Если VPN-служба упала, сторож перезапустит её и напишет, помогло ли. Не чаще раза в 10 минут и не больше трёх раз в час' }),
+        ruleRow({ r: W, key: 'restartOther', title: 'Перезапускать и другие упавшие службы',
+          text: () => 'Только постоянно работающие службы — разовые задачи (Type=oneshot) сторож не трогает' })),
+      this.wdEl);
+    this.wdSync();
+    this.renderWatch();
+
     this.formEl.replaceChildren(
       h('div', { class: 'section-title' }, 'Настройки', h('span', { class: 'grow' }), saveState),
-      h('div', { class: 'alerts-grid' }, rules, h('div', { class: 'alerts-side' }, channels, servers)));
+      h('div', { class: 'alerts-grid' }, rules, h('div', { class: 'alerts-side' }, channels, servers)),
+      watch);
+  }
+
+  // состояние сторожа на каждом сервере — у каждого свой запрос по SSH
+  renderWatch() {
+    clearTimeout(this.wdT);
+    this.wdKey = this.wdSig();
+    const vis = S.servers.filter((s) => !s.hidden);
+    if (!vis.length) { this.wdEl.replaceChildren(h('div', { class: 'muted', style: { fontSize: '13px' } }, 'Серверов пока нет')); return; }
+    this.wdEl.replaceChildren(...vis.map((s) => this.wdRow(s)));
+    if (this.wdSync) this.wdSync();
+  }
+
+  wdRow(s) {
+    const id = s.id;
+    const st = h('div', { class: 'wd-st' });
+    const acts = h('div', { class: 'wd-acts' });
+    const row = h('div', { class: 'wd-row' }, h('span', { class: 'dot ' + s.status }),
+      h('div', { class: 'wd-main' }, h('div', { class: 'wd-name' }, s.name), st), acts);
+    const ago = (sec) => (sec < 60 ? `${Math.max(0, Math.round(sec))} с назад` : Fmt.dur(sec) + ' назад');
+    const btn = (label, cls, fn, extra) => h('button', Object.assign({ class: 'btn sm ' + cls, type: 'button', onclick: fn }, extra || {}), label);
+    const busy = (text) => { st.replaceChildren(h('span', { class: 'spinner' }), NB + text); acts.replaceChildren(); };
+    const load = async () => {
+      try { show(await api(`/servers/${encodeURIComponent(id)}/watchdog`)); } catch (e) { show({ error: e.message }); }
+    };
+    const act = async (action, okText) => {
+      try {
+        const d = await api(`/servers/${encodeURIComponent(id)}/watchdog`, { method: 'POST', body: { action } });
+        if (okText) toast(okText);
+        if (d && d.installed !== undefined) show(d); else load();
+      } catch (e) {
+        toast(e.message, 'bad');
+        load();
+      }
+    };
+    const install = async (again) => {
+      const restart = W2();
+      const ok = await confirmDialog({
+        title: again ? `Обновить сторожа на ${s.name}?` : `Поставить сторожа на ${s.name}?`,
+        text: h('div', null,
+          h('p', { style: { margin: '0 0 8px' } }, 'Панель запишет на сервер скрипт и настройки в /etc/server-panel-watchdog и таймер systemd server-panel-watchdog. Раз в минуту сторож проверяет сервер и пишет в Telegram ваш бот. ', restart),
+          h('p', { class: 'muted', style: { margin: 0, fontSize: '12.5px' } }, 'Токен бота хранится на сервере в файле, который может прочитать только root.')),
+        ok: again ? 'Обновить' : 'Поставить',
+      });
+      if (!ok) return;
+      busy(again ? 'обновляю…' : 'ставлю…');
+      await act('install', again ? `Сторож на ${s.name} обновлён` : `Сторож стоит на ${s.name}: первая проверка — через 10 секунд`);
+      this.wdT = setTimeout(() => this.renderWatch(), 15e3);
+    };
+    const remove = async () => {
+      const ok = await confirmDialog({
+        title: `Убрать сторожа с ${s.name}?`,
+        text: 'Таймер, скрипт и настройки сторожа будут удалены с сервера. О событиях этого сервера в Telegram снова будет сообщать панель — пока она запущена.',
+        ok: 'Убрать', danger: true,
+      });
+      if (!ok) return;
+      busy('убираю…');
+      act('remove', `Сторож убран с ${s.name}`);
+    };
+    const test = async () => { busy('отправляю…'); act('test', 'Проверочное сообщение отправлено'); };
+    const W2 = () => {
+      const w = (this.cfg && this.cfg.watch) || {};
+      const vpn = w.restartVpn !== false, other = !!w.restartOther;
+      if (vpn && other) return 'Упавшие службы он перезапускает сам.';
+      if (vpn) return 'Упавшие VPN-службы он перезапускает сам.';
+      if (other) return 'Упавшие службы, кроме VPN, он перезапускает сам.';
+      return 'Сам он ничего не перезапускает — только сообщает.';
+    };
+    const show = (d) => {
+      const lines = [];
+      const a = [];
+      if (d.offline) {
+        lines.push(h('span', { class: 'muted' }, s.info && s.info.watchdog ? 'сторож стоит · нет связи с сервером' : 'нет связи с сервером'));
+      } else if (d.error) {
+        lines.push(h('span', { class: 'bad-ink' }, d.error));
+        a.push(btn('Повторить', 'ghost', load));
+      } else if (d.foreign) {
+        lines.push(h('span', { class: 'warn-ink' }, `уже есть чужой ${d.foreign} с тем же именем — панель его не трогает, сторож не ставится`));
+      } else if (!d.installed) {
+        if (!d.root) lines.push(h('span', { class: 'muted' }, 'нужен root или sudo без пароля'));
+        else if (!d.systemd) lines.push(h('span', { class: 'muted' }, 'на сервере нет systemd'));
+        else if (!d.curl) lines.push(h('span', { class: 'muted' }, 'на сервере нет curl — установите его (apt install curl)'));
+        else {
+          lines.push(h('span', { class: 'muted' }, 'не стоит'));
+          a.push(btn('Поставить', '', () => install(false), { 'data-wd-install': '1', disabled: !this.wdReady() }));
+        }
+      } else {
+        const age = d.run && d.now ? d.now - d.run : null;
+        if (!d.active) lines.push(h('span', { class: 'bad-ink' }, 'таймер выключен — сторож не запускается'));
+        else if (age == null) lines.push(h('span', { class: 'muted' }, 'стоит · первая проверка вот-вот'));
+        else if (age > 300) lines.push(h('span', { class: 'warn-ink' }, `стоит · последняя проверка ${ago(age)}`));
+        else lines.push(h('span', { class: 'good-ink' }, `работает · проверка ${ago(age)}`));
+        if (d.stale) lines.push(h('span', { class: 'muted' }, 'настройки на сервере старые'));
+        if (d.err) lines.push(h('span', { class: 'bad-ink' }, `не может написать в Telegram: ${d.err}` + (d.queue ? ` · ждут отправки: ${d.queue}` : '')));
+        if (d.firing && d.firing.length) lines.push(h('span', null, 'сейчас: ' + d.firing.join('; ')));
+        if (d.stale) a.push(btn('Обновить', 'primary', () => install(true), { 'data-wd-install': '1', disabled: !this.wdReady() }));
+        a.push(btn('Проверить', 'ghost', test, { title: 'Сторож пришлёт в Telegram проверочное сообщение' }));
+        a.push(btn('Убрать', 'ghost', remove));
+      }
+      st.replaceChildren(...lines.flatMap((x, i) => (i ? [h('span', { class: 'wd-sep', 'aria-hidden': 'true' }, ' · '), x] : [x])));
+      acts.replaceChildren(...a);
+    };
+    if (s.status !== 'online') show({ offline: true });
+    else { busy('проверяю…'); load(); }
+    return row;
   }
 
   async clearEvents() {
@@ -987,7 +1137,7 @@ class AlertsPage {
     try { await api('/alerts/events', { method: 'DELETE' }); this.events = []; this.renderEvents(); } catch (e) { toast(e.message, 'bad'); }
   }
 
-  destroy() { clearInterval(this.tick); }
+  destroy() { clearInterval(this.tick); clearTimeout(this.wdT); }
 }
 
 /* ---------- команды на нескольких серверах ---------- */

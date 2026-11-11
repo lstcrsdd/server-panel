@@ -31,13 +31,14 @@ type Rule struct {
 }
 
 type AlertRules struct {
-	Offline  Rule `json:"offline"`  // нет связи N мин
-	CPU      Rule `json:"cpu"`      // процессор в среднем ≥ X% за N мин
-	Mem      Rule `json:"mem"`      // память ≥ X% за N мин
-	Disk     Rule `json:"disk"`     // файловая система заполнена ≥ X%
-	Failed   Rule `json:"failed"`   // служба перешла в состояние ошибки
-	VPN      Rule `json:"vpn"`      // VPN-служба не работает N мин
-	Recovery bool `json:"recovery"` // сообщать о восстановлении
+	Offline  Rule  `json:"offline"`        // нет связи N мин
+	CPU      Rule  `json:"cpu"`            // процессор в среднем ≥ X% за N мин
+	Mem      Rule  `json:"mem"`            // память ≥ X% за N мин
+	Disk     Rule  `json:"disk"`           // файловая система заполнена ≥ X%
+	Failed   Rule  `json:"failed"`         // служба перешла в состояние ошибки
+	VPN      Rule  `json:"vpn"`            // VPN-служба не работает N мин
+	Temp     *Rule `json:"temp,omitempty"` // перегрев дольше N мин; nil — по умолчанию (в старых настройках его нет)
+	Recovery bool  `json:"recovery"`       // сообщать о восстановлении
 }
 
 type AlertChannels struct {
@@ -50,7 +51,10 @@ type AlertChannels struct {
 type AlertConfig struct {
 	Rules    AlertRules    `json:"rules"`
 	Channels AlertChannels `json:"channels"`
+	Watch    WatchCfg      `json:"watch"` // сторож на серверах (watchdog.go)
 }
+
+func defaultTempRule() *Rule { return &Rule{On: true, Min: 5} }
 
 func defaultAlertConfig() AlertConfig {
 	return AlertConfig{
@@ -61,6 +65,7 @@ func defaultAlertConfig() AlertConfig {
 			Disk:     Rule{On: true, Pct: 90},
 			Failed:   Rule{On: true},
 			VPN:      Rule{On: true, Min: 1},
+			Temp:     defaultTempRule(),
 			Recovery: true,
 		},
 		Channels: AlertChannels{MacOS: true},
@@ -73,7 +78,11 @@ func (a *App) alertConfig() AlertConfig {
 	if a.settings.Alerts == nil {
 		return defaultAlertConfig()
 	}
-	return *a.settings.Alerts
+	c := *a.settings.Alerts
+	if c.Rules.Temp == nil {
+		c.Rules.Temp = defaultTempRule()
+	}
+	return c
 }
 
 // ---------- состояние ----------
@@ -282,6 +291,10 @@ func (al *Alerts) evaluate() {
 		m.mu.RLock()
 		srv, status, down := m.srv, m.status, m.downSince
 		units, unitsAt, fsList := m.units, m.unitsAt, m.fs
+		var temps []TempSensor
+		if m.latest != nil {
+			temps = m.latest.Temps
+		}
 		var cpuAvg, memAvg avg
 		if r.CPU.On && r.CPU.Min > 0 {
 			cpuAvg.v, cpuAvg.ok = windowAvg(m.raw, r.CPU.Min, al.a.interval, func(p Point) float64 { return p.CPU })
@@ -356,6 +369,20 @@ func (al *Alerts) evaluate() {
 				}
 				if f.Pct >= thr {
 					add("disk", f.Mount, fmt.Sprintf("диск %s заполнен на %.0f%%", f.Mount, f.Pct), 0)
+				}
+			}
+		}
+
+		// перегрев: самый горячий датчик каждого процессора, видеокарты и диска
+		mark("temp")
+		if r.Temp.On {
+			for _, t := range tempAlarms(temps) {
+				thr := t.crit
+				if firing(key("temp", t.subj)) {
+					thr -= 3
+				}
+				if t.c >= thr {
+					add("temp", t.subj, fmt.Sprintf("перегрев: %s %.0f °C (порог %.0f °C)", t.who, t.c, t.crit), time.Duration(r.Temp.Min*float64(time.Minute)))
 				}
 			}
 		}
@@ -515,6 +542,15 @@ func recoveryText(f *Firing, now time.Time) string {
 		return "служба " + strings.TrimSuffix(f.Subject, ".service") + " больше не в ошибке"
 	case "vpn":
 		return "VPN-служба " + strings.TrimSuffix(f.Subject, ".service") + " снова работает (не работала " + d + ")"
+	case "temp":
+		switch {
+		case f.Subject == "cpu":
+			return "процессор остыл"
+		case strings.HasPrefix(f.Subject, "gpu:"):
+			return "видеокарта остыла"
+		case strings.HasPrefix(f.Subject, "disk:"):
+			return "диск " + strings.TrimPrefix(f.Subject, "disk:") + " остыл"
+		}
 	}
 	return "в норме: " + f.Text
 }
@@ -529,11 +565,52 @@ func (al *Alerts) addEvent(server, name, kind, state, text string) *AlertEvent {
 
 // ---------- отправка ----------
 
+// watchKinds — события, о которых сторож на сервере пишет в Telegram сам.
+var watchKinds = map[string]bool{"vpn": true, "failed": true, "disk": true, "temp": true}
+
 func (al *Alerts) deliver(ch AlertChannels, evs []*AlertEvent) {
-	title, body := composeMessage(evs)
-	sent, errs := al.sendAll(ch, title, body)
+	tgEvs, byWatch := evs, map[*AlertEvent]bool{}
+	if ch.Telegram {
+		tgEvs = nil
+		for _, e := range evs {
+			if watchKinds[e.Kind] && al.a.watchdogOn(e.Server) {
+				byWatch[e] = true
+			} else {
+				tgEvs = append(tgEvs, e)
+			}
+		}
+	}
+	var localErr, tgErr error
+	if al.notify {
+		if ch.MacOS {
+			title, body := composeMessage(evs)
+			localErr = notifyLocal(title, body)
+		}
+		if ch.Telegram && len(tgEvs) > 0 {
+			title, body := composeMessage(tgEvs)
+			tgErr = telegramSend(ch.TGToken, ch.TGChat, title+"\n"+body)
+		}
+	}
 	al.mu.Lock()
 	for _, e := range evs {
+		var sent, errs []string
+		if ch.MacOS {
+			if localErr != nil {
+				errs = append(errs, localNotifyName()+": "+localErr.Error())
+			} else {
+				sent = append(sent, localNotifyName())
+			}
+		}
+		if ch.Telegram {
+			switch {
+			case byWatch[e]:
+				sent = append(sent, "Telegram — пишет сторож на сервере")
+			case tgErr != nil:
+				errs = append(errs, "Telegram: "+tgErr.Error())
+			default:
+				sent = append(sent, "Telegram")
+			}
+		}
 		e.Sent = strings.Join(sent, ", ")
 		e.Err = strings.Join(errs, "; ")
 		if !al.notify {
@@ -584,27 +661,6 @@ func plural(n int, one, few, many string) string {
 		return few
 	}
 	return many
-}
-
-func (al *Alerts) sendAll(ch AlertChannels, title, body string) (sent, errs []string) {
-	if !al.notify {
-		return nil, nil
-	}
-	if ch.MacOS {
-		if err := notifyLocal(title, body); err != nil {
-			errs = append(errs, localNotifyName()+": "+err.Error())
-		} else {
-			sent = append(sent, localNotifyName())
-		}
-	}
-	if ch.Telegram {
-		if err := telegramSend(ch.TGToken, ch.TGChat, title+"\n"+body); err != nil {
-			errs = append(errs, "Telegram: "+err.Error())
-		} else {
-			sent = append(sent, "Telegram")
-		}
-	}
-	return sent, errs
 }
 
 func localNotifyName() string {
@@ -770,7 +826,7 @@ func telegramChats(token string) ([]tgChat, error) {
 func maskAlertConfig(c AlertConfig) map[string]any {
 	hasToken := c.Channels.TGToken != ""
 	c.Channels.TGToken = ""
-	return map[string]any{"rules": c.Rules, "channels": c.Channels, "tgTokenSet": hasToken}
+	return map[string]any{"rules": c.Rules, "channels": c.Channels, "watch": c.Watch, "tgTokenSet": hasToken}
 }
 
 func (a *App) handleAlerts(w http.ResponseWriter, r *http.Request) {
@@ -795,11 +851,14 @@ func (a *App) handleAlertConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "неверный запрос")
 		return
 	}
+	if req.Rules.Temp == nil {
+		req.Rules.Temp = a.alertConfig().Rules.Temp
+	}
 	rr := req.Rules
 	for _, x := range []struct {
 		r   Rule
 		pct bool
-	}{{rr.Offline, false}, {rr.CPU, true}, {rr.Mem, true}, {rr.Disk, true}, {rr.VPN, false}} {
+	}{{rr.Offline, false}, {rr.CPU, true}, {rr.Mem, true}, {rr.Disk, true}, {rr.VPN, false}, {*req.Rules.Temp, false}} {
 		if err := validRule(x.r, x.pct); err != nil {
 			writeErr(w, 400, err.Error())
 			return
@@ -835,6 +894,7 @@ func (a *App) handleAlertConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
+	a.syncWatchdogs()
 	writeJSON(w, 200, map[string]any{"ok": true, "config": maskAlertConfig(req)})
 }
 
