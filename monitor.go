@@ -840,7 +840,8 @@ func (m *Monitor) stream(ctx context.Context) error {
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	srv := m.server()
-	args := append(m.app.sshArgs(&srv), "sh -s")
+	// INFO, а не ERROR: иначе при обрыве до входа на карточке лишь «exit status 255»
+	args := append(m.app.sshArgsInfo(&srv), "sh -s")
 	cmd := exec.CommandContext(sctx, "ssh", args...)
 	cmd.Stdin = strings.NewReader(streamScript(m.app.interval))
 	parser := &streamParser{m: m}
@@ -894,6 +895,10 @@ func (m *Monitor) stream(ctx context.Context) error {
 	}
 	if s := strings.TrimSpace(stderr.String()); s != "" {
 		return errors.New(lastLines(s, 3))
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 255 {
+		return errors.New("SSH-соединение не удалось, ssh не назвал причину")
 	}
 	if err != nil {
 		return fmt.Errorf("ssh: %v", err)

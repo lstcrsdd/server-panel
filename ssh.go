@@ -46,6 +46,21 @@ func (a *App) sshArgs(s *Server) []string {
 	return append(args, "--", s.Alias)
 }
 
+// sshArgsInfo — sshArgs с LogLevel=INFO. Обрыв до входа («Connection closed
+// by…», «Connection reset by…», таймаут приветствия) ssh сообщает только на
+// уровне INFO; при ERROR он молча выходит с кодом 255, и причины не видно.
+// Только для вызовов, где stderr не смешивается с выводом: на INFO в stderr
+// попадает и приветственный баннер сервера.
+func (a *App) sshArgsInfo(s *Server) []string {
+	args := a.sshArgs(s)
+	for i, v := range args {
+		if v == "LogLevel=ERROR" {
+			args[i] = "LogLevel=INFO"
+		}
+	}
+	return args
+}
+
 // hostKeyArgs — проверка ключа хоста. Серверы, добавленные мастером, сверяются
 // с ключом, который пользователь подтвердил при добавлении (known_hosts панели,
 // запись по id сервера). Старые записи — как раньше, «доверять при первом входе».
@@ -175,6 +190,8 @@ var sshErrHints = []struct{ needle, text string }{
 	{"No route to host", "Нет маршрута до хоста"},
 	{"Network is unreachable", "Сеть недоступна"},
 	{"Connection closed by", "Сервер закрыл соединение"},
+	{"closed by remote host", "Сервер закрыл соединение"},
+	{"Unable to negotiate", "Сервер и клиент не договорились о шифровании (Unable to negotiate)"},
 	{"Connection reset", "Соединение сброшено"},
 	{"Too many authentication failures", "Слишком много попыток аутентификации"},
 	{"no such identity", "Файл ключа не найден"},
