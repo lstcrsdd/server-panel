@@ -34,7 +34,7 @@ import (
 	"time"
 )
 
-const watchdogVer = 1
+const watchdogVer = 2
 
 // watchdogMark — метка файлов сторожа: по ней панель отличает своё от чужого.
 const watchdogMark = "server-panel:watchdog"
@@ -93,8 +93,8 @@ SD=$ST/s; RD=$ST/r; QD=$ST/q
 mkdir -p "$SD" "$RD" "$QD" || exit 1
 exec 9>"$ST/lock"
 if command -v flock >/dev/null 2>&1; then flock -w 120 9 || exit 0; fi
-NOW=$(date +%s)
-SC=$(command -v systemctl 2>/dev/null)
+NOW=${WD_NOW:-$(date +%s)}
+SC=${WD_SYSTEMCTL:-$(command -v systemctl 2>/dev/null)}
 MSG=
 SEEN=' '
 RAN=' '
@@ -115,13 +115,15 @@ hm() { TZ="$TZ_USER" date -d "@$1" +%H:%M 2>/dev/null || TZ="$TZ_USER" date +%H:
 state_ru() {
   case "$1" in
     failed) echo ошибка ;;
+    activating) case "$2" in auto-restart*) echo "падает и перезапускается по кругу" ;; *) echo "$1/$2" ;; esac ;;
     inactive) echo остановлена ;;
     deactivating) echo останавливается ;;
     *) echo "$1/$2" ;;
   esac
 }
 
-# Состояние условия — файл в $SD: «ключ|с какого времени|сообщили ли|текст».
+# Состояние условия — файл в $SD: «ключ|с какого времени|сообщили ли|текст»
+# и для служб, пропавших из списка, — «|с какого времени её нет» (см. recover).
 st_get() {
   since=$NOW; fired=0
   f=$SD/$(fid "$1")
@@ -196,7 +198,10 @@ check_vpn() {
     case "$ld" in ''|not-found) continue ;; esac
     case "$uf" in disabled|masked) [ "$a" = active ] || continue ;; esac
     echo "$u" >> "$sf.n"
-    case "$a" in active|activating|reloading) continue ;; esac
+    case "$a" in
+      active|reloading) continue ;;
+      activating) case "$s" in auto-restart*) ;; *) continue ;; esac ;;
+    esac
     rs=0
     if [ "$RESTART_VPN" = 1 ]; then
       case "$a" in failed) rs=1 ;; inactive) [ "$res" = success ] || rs=1 ;; esac
@@ -208,10 +213,16 @@ check_vpn() {
 
 check_failed() {
   RAN="${RAN}failed "
-  "$SC" list-units --state=failed --type=service --no-legend --no-pager --plain 2>/dev/null |
-    awk -v re="$VPN_RE" '$1 ~ /\.service$/ && !(tolower($1) ~ re) {print $1}' > "$ST/failed-now"
-  while read -r u; do
+  # упавшие и падающие по кругу (Restart=…: между попытками «activating auto-restart»)
+  "$SC" list-units --type=service --all --no-legend --no-pager --plain 2>/dev/null |
+    awk -v re="$VPN_RE" '$1 ~ /\.service$/ && !(tolower($1) ~ re) && ($3 == "failed" || $4 ~ /^auto-restart/) {print $1, $3}' > "$ST/failed-now"
+  while read -r u a; do
     [ -n "$u" ] || continue
+    if [ "$a" != failed ]; then
+      # systemd и так перезапускает её сам — только сообщаем, и не сразу
+      unit_bad failed "$u" 120 "служба" "падает и перезапускается по кругу" 0
+      continue
+    fi
     rs=0
     if [ "$RESTART_OTHER" = 1 ]; then
       t=$(show "$("$SC" show -p Type "$u" 2>/dev/null)" Type)
@@ -318,14 +329,23 @@ recover() {
     [ -f "$f" ] || continue
     id=${f##*/}
     case "$SEEN" in *" $id "*) continue ;; esac
-    IFS='|' read -r k since fired _t < "$f" || continue
+    IFS='|' read -r k since fired t gone < "$f" || continue
     kind=${k%%:*}
     case "$RAN" in *" $kind "*) ;; *) continue ;; esac
+    case "$since" in ''|*[!0-9]*) since=$NOW ;; esac
+    end=$NOW
+    # Служба пропала из списка — ещё не значит, что починилась: таймер запускает
+    # упавшую oneshot-службу заново, а падающая по кругу на миг бывает active.
+    # Снимаем, только если её нет в списке 2 минуты.
+    case "$kind:$fired" in vpn:1|failed:1)
+      case "$gone" in ''|*[!0-9]*) printf '%s|%s|%s|%s|%s\n' "$k" "$since" "$fired" "$t" "$NOW" > "$f"; continue ;; esac
+      [ $((NOW - gone)) -ge 120 ] || continue
+      end=$gone ;;
+    esac
     rm -f "$f"
     [ "$fired" = 1 ] && [ "$RECOVERY" = 1 ] || continue
     sub=${k#*:}
-    case "$since" in ''|*[!0-9]*) since=$NOW ;; esac
-    d=$(ago $((NOW - since)))
+    d=$(ago $((end - since)))
     case "$kind" in
       vpn) line "🟢 VPN-служба ${sub%.service} снова работает (не работала $d)" ;;
       failed) line "🟢 служба ${sub%.service} больше не в ошибке" ;;
@@ -372,8 +392,8 @@ status() {
     echo "err=$(cat "$ST/err" 2>/dev/null)"
     for f in "$SD"/*; do
       [ -f "$f" ] || continue
-      IFS='|' read -r _k s fd t < "$f" || continue
-      [ "$fd" = 1 ] && echo "firing=$s|$t"
+      IFS='|' read -r _k s fd t _g < "$f" || continue
+      if [ "$fd" = 1 ]; then echo "firing=$s|$t"; fi # не «&&»: иначе блок вернёт 1 и status не запишется
     done
   } > "$ST/status.n" && mv "$ST/status.n" "$ST/status"
 }

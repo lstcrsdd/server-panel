@@ -143,12 +143,14 @@ type Alerts struct {
 	mu      sync.Mutex
 	st      alertState
 	pending map[string]time.Time // условие замечено, ждём, пока продержится
-	nextID  int64
-	path    string
+	// служба пропала из списка проблемных, ждём, не вернётся ли (см. unitClearAfter)
+	clearing map[string]time.Time
+	nextID   int64
+	path     string
 }
 
 func newAlerts(a *App, notify bool) *Alerts {
-	al := &Alerts{a: a, notify: notify, pending: map[string]time.Time{}, path: filepath.Join(a.dataDir, "alerts.json")}
+	al := &Alerts{a: a, notify: notify, pending: map[string]time.Time{}, clearing: map[string]time.Time{}, path: filepath.Join(a.dataDir, "alerts.json")}
 	if b, err := os.ReadFile(al.path); err == nil {
 		_ = json.Unmarshal(b, &al.st)
 	}
@@ -424,13 +426,20 @@ func (al *Alerts) evaluate() {
 					seen[u.Unit] = true
 					seenChanged = true
 				}
-				if r.VPN.On && seen[u.Unit] && u.Active != "active" && u.Active != "activating" && u.Active != "reloading" {
+				starting := (u.Active == "activating" && !restarting(u.Sub)) || u.Active == "reloading"
+				if r.VPN.On && seen[u.Unit] && u.Active != "active" && !starting {
 					add("vpn", u.Unit, fmt.Sprintf("VPN-служба %s не работает (%s)", short, stateRu(u.Active, u.Sub)), time.Duration(r.VPN.Min*float64(time.Minute)))
 				}
 				continue
 			}
-			if r.Failed.On && u.Active == "failed" {
+			switch {
+			case !r.Failed.On:
+			case u.Active == "failed":
 				add("failed", u.Unit, fmt.Sprintf("служба %s завершилась с ошибкой", short), 50*time.Second)
+			case restarting(u.Sub):
+				// Restart=always: между попытками служба не «failed», а «activating
+				// (auto-restart)». Одна перезагрузка после сбоя — не повод, поэтому ждём.
+				add("failed", u.Unit, fmt.Sprintf("служба %s падает и перезапускается по кругу", short), 2*time.Minute)
 			}
 		}
 		// служба исчезла из списка (удалена или выгружена) — больше не следим
@@ -514,12 +523,14 @@ func (al *Alerts) evaluate() {
 	}
 
 	var fired, resolved []*Firing
+	ends := map[*Firing]time.Time{} // когда проблема закончилась — для «не работала N»
 	var silent bool
 	cur := map[string]bool{}
 	for _, c := range conds {
 		cur[c.key] = true
 		if f := al.st.Firing[c.key]; f != nil {
 			f.Text = c.text
+			delete(al.clearing, c.key)
 			continue
 		}
 		since, ok := al.pending[c.key]
@@ -551,14 +562,38 @@ func (al *Alerts) evaluate() {
 		if !active[f.Server] {
 			// сервер убран, выключен или заглушён — снимаем без сообщения
 			delete(al.st.Firing, k)
+			delete(al.clearing, k)
 			silent = true
 			continue
 		}
 		if !evaluated[f.Server+"|"+f.Kind] {
 			continue // нет данных — оставляем как есть
 		}
+		end := now
+		if unitKinds[f.Kind] {
+			// Служба пропала из списка проблемных — ещё не значит, что починилась:
+			// таймер запускает упавшую oneshot-службу заново, и пока она работает,
+			// она не «failed»; падающая по кругу на миг бывает «active». Снимаем,
+			// только если её нет в списке unitClearAfter.
+			t0, ok := al.clearing[k]
+			if !ok {
+				al.clearing[k] = now
+				continue
+			}
+			if now.Sub(t0) < unitClearAfter {
+				continue
+			}
+			end = t0
+			delete(al.clearing, k)
+		}
 		delete(al.st.Firing, k)
 		resolved = append(resolved, f)
+		ends[f] = end
+	}
+	for k := range al.clearing {
+		if al.st.Firing[k] == nil {
+			delete(al.clearing, k)
+		}
 	}
 
 	var batch []*AlertEvent
@@ -566,7 +601,7 @@ func (al *Alerts) evaluate() {
 		batch = append(batch, al.addEvent(f.Server, f.Name, f.Kind, "fire", f.Text))
 	}
 	for _, f := range resolved {
-		batch = append(batch, al.addEvent(f.Server, f.Name, f.Kind, "ok", recoveryText(f, now)))
+		batch = append(batch, al.addEvent(f.Server, f.Name, f.Kind, "ok", recoveryText(f, ends[f])))
 	}
 	var send []*AlertEvent
 	for _, e := range batch {
@@ -595,10 +630,21 @@ func (al *Alerts) evaluate() {
 	}
 }
 
+// Оповещения о службах снимаются не сразу, а когда служба unitClearAfter не
+// появлялась в списке проблемных. Список обновляется раз в 30 с, так что
+// одна проверка, попавшая на перезапуск, оповещение не снимет.
+const unitClearAfter = 2 * time.Minute
+
+var unitKinds = map[string]bool{"failed": true, "vpn": true}
+
 func stateRu(active, sub string) string {
 	switch active {
 	case "failed":
 		return "ошибка"
+	case "activating":
+		if restarting(sub) {
+			return "падает и перезапускается по кругу"
+		}
 	case "inactive":
 		return "остановлена"
 	case "deactivating":

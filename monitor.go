@@ -57,7 +57,7 @@ while :; do
   echo @@S; cat /proc/net/sockstat 2>/dev/null
   if [ $((i %% 10)) -eq 0 ]; then echo @@FS; df -kP 2>/dev/null; fi
 `+tempTick+`  if [ $((i %% 15)) -eq 0 ] && [ -n "$SC" ]; then
-    echo @@U; systemctl list-units --type=service --all --no-legend --no-pager --plain 2>/dev/null | awk -v re='%s' '$3=="failed" || tolower($1) ~ re {print $1, $2, $3, $4}'
+    echo @@U; systemctl list-units --type=service --all --no-legend --no-pager --plain 2>/dev/null | awk -v re='%s' '$3=="failed" || $4 ~ /^auto-restart/ || tolower($1) ~ re {print $1, $2, $3, $4}'
   fi
   echo @@E
   i=$((i+1))
@@ -276,6 +276,10 @@ type UnitState struct {
 	VPN    bool   `json:"vpn,omitempty"`
 }
 
+// restarting — служба упала, и systemd ждёт, чтобы запустить её снова
+// (Restart=…): «activating (auto-restart)», в новых версиях ещё auto-restart-queued.
+func restarting(sub string) bool { return strings.HasPrefix(sub, "auto-restart") }
+
 type streamParser struct {
 	m       *Monitor
 	section string
@@ -401,7 +405,7 @@ func (p *streamParser) line(l string) {
 			return
 		}
 		u := UnitState{Unit: fs[0], Load: fs[1], Active: fs[2], Sub: fs[3], VPN: isVPNUnit(fs[0])}
-		if u.Active == "failed" || (u.VPN && u.Load == "loaded") {
+		if u.Active == "failed" || restarting(u.Sub) || (u.VPN && u.Load == "loaded") {
 			f.units = append(f.units, u)
 		}
 	case "TM":

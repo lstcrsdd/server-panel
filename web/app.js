@@ -5,6 +5,8 @@ const RANGES = { '5m': 5 * 60e3, '15m': 15 * 60e3, '1h': 3600e3, '6h': 6 * 3600e
 const RANGE_LABELS = [['5m', '5 мин'], ['15m', '15 мин'], ['1h', '1 час'], ['6h', '6 часов'], ['24h', '24 часа'], ['7d', '7 дней'], ['30d', '30 дней']];
 const SPARK_N = 150;
 const NB = ' ';
+// служба с ошибкой: упала или падает и перезапускается по кругу (Restart=…, «activating (auto-restart)»)
+const unitBad = (u) => u.active === 'failed' || /^auto-restart/.test(u.sub || '');
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem('sp.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -552,7 +554,7 @@ class FleetPage {
       ref.net = h('div', { class: 'fnet' });
       ref.cv = h('canvas', { 'aria-hidden': 'true' });
       el.append(h('div', { class: 'fmeters' }, ref.cpu.row, ref.mem.row, ref.disk.row), ref.net, ref.cv);
-      const failed = (srv.units || []).filter((u) => u.active === 'failed');
+      const failed = (srv.units || []).filter(unitBad);
       if (failed.length) {
         el.append(h('div', { class: 'fwarn', title: failed.map((u) => u.unit).join('\n') }, icon('warn'),
           `${failed.length === 1 ? 'служба с ошибкой' : 'службы с ошибкой'}: ${failed.map((u) => u.unit.replace(/\.service$/, '')).join(', ')}`));
@@ -615,7 +617,7 @@ class FleetPage {
       if (m.cpu >= 90) issues.push(`${x.name}: CPU ${Fmt.pct0(m.cpu)}`);
       if (memPct(m) >= 90) issues.push(`${x.name}: память ${Fmt.pct0(memPct(m))}`);
       for (const f of m.fs || []) if (f.pct >= 90) issues.push(`${x.name}: диск ${f.mount} ${Fmt.pct0(f.pct)}`);
-      for (const u of x.units || []) if (u.active === 'failed') issues.push(`${x.name}: ${u.unit.replace(/\.service$/, '')} — ошибка`);
+      for (const u of x.units || []) if (unitBad(u)) issues.push(`${x.name}: ${u.unit.replace(/\.service$/, '')} — ошибка`);
     }
     s.warn.textContent = String(issues.length);
     s.warnSub.textContent = issues.length ? issues.join(' · ') : 'всё в порядке';
@@ -1804,6 +1806,7 @@ const RISKY_UNITS = /^(ssh|sshd|tailscaled|networking|systemd-networkd|NetworkMa
 
 function serviceState(s) {
   if (s.active === 'failed') return ['bad', 'ошибка'];
+  if (unitBad(s)) return ['bad', 'падает и перезапускается'];
   if (s.active === 'active' && s.sub === 'running') return ['good', 'работает'];
   if (s.active === 'active' && s.sub === 'exited') return ['good', 'выполнена'];
   if (s.active === 'active') return ['good', s.sub];
@@ -1848,7 +1851,7 @@ function servicesTab(page) {
 
   function render() {
     const all = st.data || [];
-    const failed = all.filter((s) => s.active === 'failed');
+    const failed = all.filter(unitBad);
     const running = all.filter((s) => s.active === 'active' && s.sub === 'running');
     filterSeg.btns.forEach(([v, b]) => {
       const n = v === 'all' ? all.length : v === 'running' ? running.length : v === 'failed' ? failed.length : all.filter((s) => s.active === 'inactive').length;
@@ -2391,11 +2394,11 @@ function vpnTab(page) {
   function render() {
     const d = st.data;
     const all = d.services || [];
-    const running = all.filter((s) => s.active === 'active' || s.active === 'activating' || s.active === 'reloading');
+    const running = all.filter((s) => !unitBad(s) && (s.active === 'active' || s.active === 'activating' || s.active === 'reloading'));
     const stopped = all.filter((s) => !running.includes(s));
     const conns = all.reduce((a, s) => a + s.ports.reduce((b, p) => b + (p.conns || 0), 0), 0);
     const ips = all.reduce((a, s) => a + s.ports.reduce((b, p) => b + (p.ips || 0), 0), 0);
-    const failed = all.filter((s) => s.active === 'failed');
+    const failed = all.filter(unitBad);
     k.svc.set(String(running.length), ` из ${all.length}`, failed.length ? `с ошибкой: ${failed.map((s) => short(s.unit)).join(', ')}` : stopped.length ? `остановлены: ${stopped.map((s) => short(s.unit)).join(', ')}` : 'все работают', null);
     k.conns.set(Fmt.int(conns), '', 'установленные TCP-соединения на портах VPN', null);
     k.ips.set(Fmt.int(ips), '', 'разные адреса, по каждому порту отдельно', null);
@@ -2416,7 +2419,7 @@ function vpnTab(page) {
     }
     listEl.replaceChildren(...running.map(card), ...failed.map(card),
       loose.length ? h('div', { class: 'card vcard' }, h('div', { class: 'vhead' }, h('div', { class: 'vname' }, h('b', null, 'Интерфейсы WireGuard'))), loose.map(wgBlock)) : '');
-    const idle = stopped.filter((s) => s.active !== 'failed');
+    const idle = stopped.filter((s) => !unitBad(s));
     stoppedEl.replaceChildren(idle.length ? h('div', null,
       h('div', { class: 'section-title' }, `Остановлены (${idle.length})`),
       h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('tbody', null, idle.map((s) => h('tr', null,
