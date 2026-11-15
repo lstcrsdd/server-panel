@@ -197,20 +197,20 @@ type schedReq struct {
 // calendarSpec собирает OnCalendar из проверенных частей.
 func (q schedReq) calendarSpec() (string, string) {
 	if !clockRe.MatchString(q.Time) {
-		return "", "укажите время в формате ЧЧ:ММ"
+		return "", L("укажите время в формате ЧЧ:ММ")
 	}
 	tz := q.TZ
 	if tz == "" {
 		tz = "UTC"
 	}
 	if !tzRe.MatchString(tz) {
-		return "", "неизвестный часовой пояс"
+		return "", L("неизвестный часовой пояс")
 	}
 	at := q.Time + ":00 " + tz
 	switch q.Repeat {
 	case "once":
 		if !dateRe.MatchString(q.Date) {
-			return "", "укажите дату"
+			return "", L("укажите дату")
 		}
 		return q.Date + " " + at, ""
 	case "daily":
@@ -219,12 +219,12 @@ func (q schedReq) calendarSpec() (string, string) {
 		set := map[string]bool{}
 		for _, d := range q.Days {
 			if !weekDays[d] {
-				return "", "неизвестный день недели"
+				return "", L("неизвестный день недели")
 			}
 			set[d] = true
 		}
 		if len(set) == 0 {
-			return "", "выберите дни недели"
+			return "", L("выберите дни недели")
 		}
 		var ds []string
 		for _, d := range dayOrder {
@@ -235,17 +235,17 @@ func (q schedReq) calendarSpec() (string, string) {
 		return strings.Join(ds, ",") + " *-*-* " + at, ""
 	case "monthly":
 		if q.MonthDay < 1 || q.MonthDay > 28 {
-			return "", "день месяца — от 1 до 28"
+			return "", L("день месяца — от 1 до 28")
 		}
 		return fmt.Sprintf("*-*-%02d %s", q.MonthDay, at), ""
 	}
-	return "", "неизвестный повтор"
+	return "", L("неизвестный повтор")
 }
 
 func (a *App) handleAddSchedule(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	var q schedReq
 	if err := readJSON(r, &q); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	spec, msg := q.calendarSpec()
@@ -258,15 +258,15 @@ func (a *App) handleAddSchedule(w http.ResponseWriter, r *http.Request, m *Monit
 	srv := m.server()
 	in := m.ensureInfo(ctx)
 	if in == nil {
-		writeErr(w, 502, "сервер недоступен")
+		writeErr(w, 502, L("сервер недоступен"))
 		return
 	}
 	if in.UID != 0 && !in.Sudo {
-		writeErr(w, 403, "нужен root или sudo без пароля")
+		writeErr(w, 403, L("нужен root или sudo без пароля"))
 		return
 	}
 	if !in.Systemd {
-		writeErr(w, 400, "на сервере нет systemd — расписание недоступно")
+		writeErr(w, 400, L("на сервере нет systemd — расписание недоступно"))
 		return
 	}
 
@@ -282,23 +282,23 @@ func (a *App) handleAddSchedule(w http.ResponseWriter, r *http.Request, m *Monit
 	case "reboot":
 		exec = "@@SYSTEMCTL@@ reboot"
 		if name == "" {
-			name = "Перезагрузка"
+			name = L("Перезагрузка")
 		}
 	case "service":
 		if !unitRe.MatchString(q.Target) {
-			writeErr(w, 400, "недопустимое имя службы")
+			writeErr(w, 400, L("недопустимое имя службы"))
 			return
 		}
 		exec = "@@SYSTEMCTL@@ restart " + q.Target
 		target = q.Target
 		targetName = q.Target
 		if name == "" {
-			name = "Перезапуск " + strings.TrimSuffix(q.Target, ".service")
+			name = L("Перезапуск ") + strings.TrimSuffix(q.Target, ".service")
 		}
 	case "scenario":
 		sc, ok := a.scenario(q.Target)
 		if !ok {
-			writeErr(w, 400, "сценарий не найден")
+			writeErr(w, 400, L("сценарий не найден"))
 			return
 		}
 		target = sc.ID
@@ -310,7 +310,7 @@ func (a *App) handleAddSchedule(w http.ResponseWriter, r *http.Request, m *Monit
 		// пользователя, под которым панель входит на сервер
 		if !sc.Sudo && in.UID != 0 {
 			if !userRe.MatchString(in.User) {
-				writeErr(w, 400, "не удалось определить пользователя на сервере")
+				writeErr(w, 400, L("не удалось определить пользователя на сервере"))
 				return
 			}
 			runAs = in.User
@@ -323,11 +323,11 @@ func (a *App) handleAddSchedule(w http.ResponseWriter, r *http.Request, m *Monit
 			timeout = strconv.Itoa(sc.Timeout) + "s"
 		}
 	default:
-		writeErr(w, 400, "неизвестный тип задания")
+		writeErr(w, 400, L("неизвестный тип задания"))
 		return
 	}
 	if name == "" {
-		name = "Задание"
+		name = L("Задание")
 	}
 
 	// путь к systemctl на этом сервере подставит sed ниже (@@SYSTEMCTL@@)
@@ -384,9 +384,9 @@ Created=%[11]d
 	case strings.Contains(out, "@@OK"):
 		writeJSON(w, 200, map[string]any{"ok": true, "id": id})
 	case strings.Contains(out, "@@PAST"):
-		writeErr(w, 400, "это время уже прошло")
+		writeErr(w, 400, L("это время уже прошло"))
 	case strings.Contains(out, "@@BADSPEC"):
-		writeErr(w, 400, "сервер не принял расписание: "+lastLines(strings.TrimSpace(strings.SplitN(out, "@@BADSPEC", 2)[1]), 2))
+		writeErr(w, 400, L("сервер не принял расписание: ")+lastLines(strings.TrimSpace(strings.SplitN(out, "@@BADSPEC", 2)[1]), 2))
 	default:
 		// не дописали — убираем то, что успели создать
 		cleanup := fmt.Sprintf("SC=$(command -v systemctl); $SC disable --now %[1]s.timer >/dev/null 2>&1; rm -f /etc/systemd/system/%[1]s.timer /etc/systemd/system/%[1]s.service /etc/method-panel/%[2]s.sh; $SC daemon-reload\n", unit, id)
@@ -395,14 +395,14 @@ Created=%[11]d
 		if msg == "" {
 			msg = res.errText()
 		}
-		writeErr(w, 500, "не удалось создать задание: "+lastLines(msg, 4))
+		writeErr(w, 500, L("не удалось создать задание: ")+lastLines(msg, 4))
 	}
 }
 
 func (a *App) schedID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := r.PathValue("tid")
 	if !schedIDRe.MatchString(id) {
-		writeErr(w, 400, "неверное задание")
+		writeErr(w, 400, L("неверное задание"))
 		return "", false
 	}
 	return id, true
@@ -430,7 +430,7 @@ rmdir /etc/method-panel 2>/dev/null
 		if msg == "" {
 			msg = res.errText()
 		}
-		writeErr(w, 500, "не удалось удалить: "+lastLines(msg, 4))
+		writeErr(w, 500, L("не удалось удалить: ")+lastLines(msg, 4))
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
@@ -445,7 +445,7 @@ func (a *App) handleScheduleAction(w http.ResponseWriter, r *http.Request, m *Mo
 		Action string `json:"action"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	unit := schedPrefix + id
@@ -460,16 +460,16 @@ systemctl start --no-block %[1]s.service 2>&1 && echo @@OK`, unit)
 	case "resume":
 		cmd = fmt.Sprintf("systemctl enable --now %s.timer 2>&1 && echo @@OK", unit)
 	default:
-		writeErr(w, 400, "неизвестное действие")
+		writeErr(w, 400, L("неизвестное действие"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
 	srv := m.server()
-	res := a.runSSH(ctx, &srv, m.sudo(ctx)+"sh -s", "[ -e /etc/systemd/system/"+unit+".timer ] || { echo 'задание не найдено'; exit 1; }\n"+cmd+"\n", true, 16<<10)
+	res := a.runSSH(ctx, &srv, m.sudo(ctx)+"sh -s", "[ -e /etc/systemd/system/"+unit+L(".timer ] || { echo 'задание не найдено'; exit 1; }\n")+cmd+"\n", true, 16<<10)
 	switch {
 	case strings.Contains(res.Stdout, "@@REBOOT"):
-		writeErr(w, 400, "перезагрузку по расписанию нельзя запустить вручную — используйте кнопку «Перезагрузить»")
+		writeErr(w, 400, L("перезагрузку по расписанию нельзя запустить вручную — используйте кнопку «Перезагрузить»"))
 	case strings.Contains(res.Stdout, "@@OK"):
 		writeJSON(w, 200, map[string]any{"ok": true})
 	default:

@@ -108,12 +108,12 @@ func (r RunResult) errText() string {
 	}
 	if r.Err != nil {
 		if errors.Is(r.Err, context.DeadlineExceeded) {
-			return "превышено время ожидания"
+			return L("превышено время ожидания")
 		}
 		return r.Err.Error()
 	}
 	if r.Code != 0 {
-		return "команда завершилась с кодом " + strconv.Itoa(r.Code)
+		return L("команда завершилась с кодом ") + strconv.Itoa(r.Code)
 	}
 	return ""
 }
@@ -202,7 +202,7 @@ var sshErrHints = []struct{ needle, text string }{
 func sshError(stderr string) string {
 	for _, h := range sshErrHints {
 		if strings.Contains(stderr, h.needle) {
-			return h.text
+			return L(h.text)
 		}
 	}
 	return ""

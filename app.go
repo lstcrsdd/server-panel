@@ -56,6 +56,8 @@ type Settings struct {
 	// SSHSetup — пользователь уже выбрал, какие хосты ~/.ssh/config показывать.
 	// До этого (первый запуск) панель их не подключает, а предлагает выбрать.
 	SSHSetup *bool `json:"sshSetup,omitempty"`
+	// Lang — язык сообщений панели: "ru" (по умолчанию) или "en". Его задаёт интерфейс.
+	Lang string `json:"lang,omitempty"`
 
 	Notes     []*Note     `json:"notes,omitempty"`     // заметки пользователя
 	Scenarios []*Scenario `json:"scenarios,omitempty"` // сохранённые сценарии
@@ -82,6 +84,7 @@ type App struct {
 	terms  *termManager
 	wsync  watchSync
 	chk    *checker
+	avail  *Avail
 }
 
 func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, error) {
@@ -111,11 +114,12 @@ func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, er
 	}
 	if useControlMaster {
 		if st, err := os.Lstat(a.cmDir); err != nil || !st.IsDir() || st.Mode().Perm()&0o077 != 0 || !ownedByMe(st) {
-			return nil, fmt.Errorf("каталог %s должен принадлежать вам и иметь права 700", a.cmDir)
+			return nil, fmt.Errorf(L("каталог %s должен принадлежать вам и иметь права 700"), a.cmDir)
 		}
 	}
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 	a.loadSettings()
+	a.avail = newAvail(dataDir)
 	a.alerts = newAlerts(a, notify)
 	a.chk = newChecker()
 	a.terms = newTermManager()
@@ -143,6 +147,7 @@ func (a *App) Start() {
 
 func (a *App) Stop() {
 	a.hub.close()
+	a.avail.flush()
 	a.mu.RLock()
 	mons := make([]*Monitor, 0, len(a.mons))
 	for _, m := range a.mons {
@@ -178,6 +183,7 @@ func (a *App) loadSettings() {
 	if a.settings.Overrides == nil {
 		a.settings.Overrides = map[string]*Override{}
 	}
+	setLang(a.settings.Lang)
 	if a.settings.SSHSetup == nil {
 		// у тех, кто уже пользовался панелью, хосты ~/.ssh/config подключались
 		// сами — так и оставляем; при первом запуске предлагаем выбрать

@@ -12,73 +12,87 @@
 <script src="theme.js"></script>
 </head>
 <body>
+<a class="skip" href="#main" data-i18n>К содержимому</a>
 <div class="app">
   <aside class="side" id="side">
     <div class="brand">
       <img class="brand-mark" src="brand/mark.png" width="40" height="19" alt="">
-      <span class="brand-text"><span class="brand-name">Method Network</span><span class="brand-sub">Панель серверов</span></span>
-      <span class="conn" id="conn" title="Связь с панелью"></span>
+      <span class="brand-name">Method Network</span>
+      <span class="conn" id="conn" role="img" aria-label="Связь с панелью"></span>
     </div>
-    <nav class="side-nav">
+    <nav class="side-nav" aria-label="Разделы" data-i18n-attr="aria-label">
       <a class="nav-item" id="nav-fleet" href="#/">
-        <svg class="ico" viewBox="0 0 20 20"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
-        <span>Все серверы</span>
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>
+        <span data-i18n>Все серверы</span>
         <span class="nav-count" id="fleet-count"></span>
       </a>
       <a class="nav-item" id="nav-alerts" href="#/alerts">
-        <svg class="ico" viewBox="0 0 20 20"><path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5h-12z"/><path d="M8.5 17.2a1.6 1.6 0 0 0 3 0"/></svg>
-        <span>Оповещения</span>
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5h-12z"/><path d="M8.5 17.2a1.6 1.6 0 0 0 3 0"/></svg>
+        <span data-i18n>Оповещения</span>
         <span class="nav-badge" id="alerts-count" hidden></span>
       </a>
       <a class="nav-item" id="nav-checks" href="#/checks">
-        <svg class="ico" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M3.5 10h13M10 3.5c-2.2 2.4-2.2 10.6 0 13M10 3.5c2.2 2.4 2.2 10.6 0 13"/></svg>
-        <span>Сайты и порты</span>
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M3.5 10h13M10 3.5c-2.2 2.4-2.2 10.6 0 13M10 3.5c2.2 2.4 2.2 10.6 0 13"/></svg>
+        <span data-i18n>Сайты и порты</span>
         <span class="nav-badge" id="checks-count" hidden></span>
       </a>
       <a class="nav-item" id="nav-commands" href="#/commands">
-        <svg class="ico" viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M6.5 8.5l2.2 1.8-2.2 1.8M10.5 12.5h3"/></svg>
-        <span>Команды</span>
-      </a>
-      <a class="nav-item" id="nav-scenarios" href="#/scenarios">
-        <svg class="ico" viewBox="0 0 20 20"><path d="M6 4.5h8.5M6 10h8.5M6 15.5h8.5"/><path d="M3 3.8l1.2 1.2L3 6.2" /><path d="M3 9.3l1.2 1.2L3 11.7"/><path d="M3 14.8l1.2 1.2L3 17.2"/></svg>
-        <span>Сценарии</span>
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M6.5 8.5l2.2 1.8-2.2 1.8M10.5 12.5h3"/></svg>
+        <span data-i18n>Команды</span>
       </a>
       <a class="nav-item" id="nav-schedule" href="#/schedule">
-        <svg class="ico" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.6"/></svg>
-        <span>Расписание</span>
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.5V10l2.5 1.6"/></svg>
+        <span data-i18n>Расписание</span>
       </a>
       <a class="nav-item" id="nav-notes" href="#/notes">
-        <svg class="ico" viewBox="0 0 20 20"><path d="M5 3.5h7l3 3v10H5z"/><path d="M11.5 3.5v3.5H15M7.5 10.5h5M7.5 13.5h3.5"/></svg>
-        <span>Заметки</span>
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 3.5h7l3 3v10H5z"/><path d="M11.5 3.5v3.5H15M7.5 10.5h5M7.5 13.5h3.5"/></svg>
+        <span data-i18n>Заметки</span>
       </a>
       <a class="nav-item" id="nav-manage" href="#/manage">
-        <svg class="ico" viewBox="0 0 20 20"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
-        <span>Управление</span>
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6h7M15 6h1M4 14h1M9 14h7"/><circle cx="13" cy="6" r="2"/><circle cx="7" cy="14" r="2"/></svg>
+        <span data-i18n>Управление</span>
       </a>
     </nav>
-    <div class="side-label">Серверы</div>
-    <div class="srv-list" id="srv-list"></div>
+    <div class="side-label" id="srv-label" data-i18n>Серверы</div>
+    <input class="srv-filter" id="srv-filter" type="search" placeholder="Фильтр по имени" aria-label="Фильтр серверов по имени" data-i18n-attr="placeholder aria-label" autocomplete="off" spellcheck="false" hidden>
+    <nav class="srv-list" id="srv-list" aria-labelledby="srv-label"></nav>
     <div class="side-foot">
-      <button class="btn primary block" id="btn-add" type="button">
-        <svg class="ico" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12" stroke-width="2" stroke-linecap="round"/></svg>
-        <span class="add-long">Добавить сервер</span><span class="add-short">Сервер</span>
-      </button>
-      <div class="side-foot-row">
-        <button class="btn ghost sm" id="btn-reload" type="button" title="Перечитать ~/.ssh/config">Обновить список</button>
-        <button class="btn ghost sm icon-only" id="btn-theme" type="button" title="Тема оформления" aria-label="Тема оформления">
-          <svg class="ico" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><path d="M10 4a6 6 0 0 1 0 12z" class="fill"/></svg>
-        </button>
+      <div class="lang" id="lang" role="group" aria-label="Язык интерфейса" data-i18n-attr="aria-label">
+        <button type="button" data-lang="ru" lang="ru" aria-label="Русский">RU</button>
+        <button type="button" data-lang="en" lang="en" aria-label="English">EN</button>
       </div>
+      <button class="rail-btn" id="btn-reload" type="button" title="Перечитать ~/.ssh/config" aria-label="Перечитать ~/.ssh/config" data-i18n-attr="title aria-label">
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 10a5.5 5.5 0 1 1-1.7-4"/><path d="M15.8 3.2v3.3h-3.3"/></svg>
+      </button>
+      <button class="rail-btn" id="btn-theme" type="button" title="Тема оформления" aria-label="Тема оформления" data-i18n-attr="title aria-label">
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="M10 4a6 6 0 0 1 0 12z" class="fill"/></svg>
+      </button>
     </div>
   </aside>
-  <main class="main" id="main"></main>
+  <div class="main" id="scroll">
+    <header class="topbar">
+      <button class="cmdk" id="cmdk" type="button" aria-haspopup="dialog" aria-keyshortcuts="Meta+K Control+K">
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5"/><path d="M13 13l3.5 3.5"/></svg>
+        <span class="cmdk-text" data-i18n>Сервер, вкладка или действие</span>
+        <kbd id="cmdk-kbd">⌘K</kbd>
+      </button>
+      <button class="btn primary" id="btn-add" type="button">
+        <svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="add-long" data-i18n>Сервер</span>
+      </button>
+    </header>
+    <main id="main" tabindex="-1"></main>
+  </div>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<script src="i18n.js"></script>
+<script src="lang-en.js"></script>
 <script src="charts.js"></script>
 <script src="manage.js"></script>
 <script src="tools.js"></script>
 <script src="hw.js"></script>
 <script src="checks.js"></script>
+<script src="palette.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

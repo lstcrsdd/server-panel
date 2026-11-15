@@ -32,15 +32,21 @@ type Scenario struct {
 	Script  string `json:"script"`
 	Sudo    bool   `json:"sudo,omitempty"`    // выполнять от root (через sudo, если вошли не под root)
 	Timeout int    `json:"timeout,omitempty"` // секунд на запуск из панели, 0 — по умолчанию
-	Created int64  `json:"created"`
-	Updated int64  `json:"updated"`
+	// Сохранённая команда под рукой: закреплённые показываются кнопками в «Командах»,
+	// на странице сервера и в палитре.
+	Pinned  bool     `json:"pinned,omitempty"`
+	Quick   bool     `json:"quick,omitempty"`   // запускать без окна подтверждения
+	Servers []string `json:"servers,omitempty"` // серверы по умолчанию, когда запуск не с страницы сервера
+	Created int64    `json:"created"`
+	Updated int64    `json:"updated"`
 }
 
 const (
-	maxNotes      = 2000
-	maxNoteText   = 50000
-	maxScenarios  = 500
-	maxScriptSize = 64 << 10
+	maxNotes           = 2000
+	maxNoteText        = 50000
+	maxScenarios       = 500
+	maxScenarioServers = 1000
+	maxScriptSize      = 64 << 10
 )
 
 func newID(n int) string {
@@ -113,7 +119,7 @@ func (a *App) applyNote(n *Note, req noteReq) string {
 		if id != "" {
 			m := a.monitor(id)
 			if m == nil {
-				return "сервер не найден"
+				return L("сервер не найден")
 			}
 			n.ServerName = m.server().Name
 		} else {
@@ -127,7 +133,7 @@ func (a *App) applyNote(n *Note, req noteReq) string {
 	if req.Text != nil {
 		t := cleanText(*req.Text)
 		if len(t) > maxNoteText {
-			return "заметка слишком длинная"
+			return L("заметка слишком длинная")
 		}
 		n.Text = t
 	}
@@ -135,7 +141,7 @@ func (a *App) applyNote(n *Note, req noteReq) string {
 		n.Pinned = *req.Pinned
 	}
 	if strings.TrimSpace(n.Title) == "" && strings.TrimSpace(n.Text) == "" {
-		return "пустая заметка"
+		return L("пустая заметка")
 	}
 	return ""
 }
@@ -143,7 +149,7 @@ func (a *App) applyNote(n *Note, req noteReq) string {
 func (a *App) handleAddNote(w http.ResponseWriter, r *http.Request) {
 	var req noteReq
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -155,7 +161,7 @@ func (a *App) handleAddNote(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	if len(a.settings.Notes) >= maxNotes {
 		a.mu.Unlock()
-		writeErr(w, 400, "слишком много заметок")
+		writeErr(w, 400, L("слишком много заметок"))
 		return
 	}
 	a.settings.Notes = append(a.settings.Notes, n)
@@ -173,7 +179,7 @@ func (a *App) handleAddNote(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 	var req noteReq
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	id := r.PathValue("nid")
@@ -187,7 +193,7 @@ func (a *App) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.RUnlock()
 	if cur == nil {
-		writeErr(w, 404, "заметка не найдена")
+		writeErr(w, 404, L("заметка не найдена"))
 		return
 	}
 	if msg := a.applyNote(cur, req); msg != "" {
@@ -209,7 +215,7 @@ func (a *App) handleUpdateNote(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Unlock()
 	if !found {
-		writeErr(w, 404, "заметка не найдена")
+		writeErr(w, 404, L("заметка не найдена"))
 		return
 	}
 	if err != nil {
@@ -247,7 +253,9 @@ func (a *App) scenariosCopy() []Scenario {
 	defer a.mu.RUnlock()
 	out := make([]Scenario, 0, len(a.settings.Scenarios))
 	for _, s := range a.settings.Scenarios {
-		out = append(out, *s)
+		c := *s
+		c.Servers = append([]string(nil), s.Servers...)
+		out = append(out, c)
 	}
 	return out
 }
@@ -270,36 +278,52 @@ func (a *App) handleScenarios(w http.ResponseWriter, r *http.Request) {
 }
 
 type scenarioReq struct {
-	Name    string `json:"name"`
-	Desc    string `json:"desc"`
-	Script  string `json:"script"`
-	Sudo    bool   `json:"sudo"`
-	Timeout int    `json:"timeout"`
+	Name    string   `json:"name"`
+	Desc    string   `json:"desc"`
+	Script  string   `json:"script"`
+	Sudo    bool     `json:"sudo"`
+	Timeout int      `json:"timeout"`
+	Pinned  bool     `json:"pinned"`
+	Quick   bool     `json:"quick"`
+	Servers []string `json:"servers"`
 }
 
 func (req scenarioReq) apply(s *Scenario) string {
 	name := cleanLine(req.Name, 120)
 	if name == "" {
-		return "укажите название"
+		return L("укажите название")
 	}
 	script := cleanText(req.Script)
 	if strings.TrimSpace(script) == "" {
-		return "пустой скрипт"
+		return L("пустой скрипт")
 	}
 	if len(script) > maxScriptSize {
-		return "скрипт больше 64 КБ"
+		return L("скрипт больше 64 КБ")
 	}
 	if req.Timeout < 0 || req.Timeout > 3600 {
-		return "время выполнения — от 1 секунды до часа"
+		return L("время выполнения — от 1 секунды до часа")
+	}
+	if len(req.Servers) > maxScenarioServers {
+		return L("слишком много серверов по умолчанию")
+	}
+	var servers []string
+	seen := map[string]bool{}
+	for _, id := range req.Servers {
+		id = cleanLine(id, 200)
+		if id != "" && !seen[id] {
+			seen[id] = true
+			servers = append(servers, id)
+		}
 	}
 	s.Name, s.Desc, s.Script, s.Sudo, s.Timeout = name, cleanLine(req.Desc, 300), script, req.Sudo, req.Timeout
+	s.Pinned, s.Quick, s.Servers = req.Pinned, req.Quick, servers
 	return ""
 }
 
 func (a *App) handleAddScenario(w http.ResponseWriter, r *http.Request) {
 	var req scenarioReq
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	now := time.Now().UnixMilli()
@@ -311,7 +335,7 @@ func (a *App) handleAddScenario(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	if len(a.settings.Scenarios) >= maxScenarios {
 		a.mu.Unlock()
-		writeErr(w, 400, "слишком много сценариев")
+		writeErr(w, 400, L("слишком много сценариев"))
 		return
 	}
 	a.settings.Scenarios = append(a.settings.Scenarios, s)
@@ -329,7 +353,7 @@ func (a *App) handleAddScenario(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleUpdateScenario(w http.ResponseWriter, r *http.Request) {
 	var req scenarioReq
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	id := r.PathValue("sid")
@@ -355,7 +379,7 @@ func (a *App) handleUpdateScenario(w http.ResponseWriter, r *http.Request) {
 	a.mu.Unlock()
 	switch {
 	case !found:
-		writeErr(w, 404, "сценарий не найден")
+		writeErr(w, 404, L("сценарий не найден"))
 	case msg != "":
 		writeErr(w, 400, msg)
 	case err != nil:

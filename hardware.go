@@ -334,9 +334,9 @@ func parseGPUs(lspci, sys, nv []string, virt bool) []HWGPU {
 		if !found && slot != "" {
 			name := gpuVendors[ven]
 			if name == "" {
-				name = "Видеоадаптер " + ven
+				name = L("Видеоадаптер ") + ven
 			}
-			out = append(out, HWGPU{Slot: slot, venID: ven, Vendor: gpuVendors[ven], Name: name + " (устройство " + strings.TrimPrefix(f["device"], "0x") + ")",
+			out = append(out, HWGPU{Slot: slot, venID: ven, Vendor: gpuVendors[ven], Name: name + L(" (устройство ") + strings.TrimPrefix(f["device"], "0x") + ")",
 				Kind: gpuKind(ven, virt), Driver: drv, VRAM: vram})
 		}
 	}
@@ -464,7 +464,7 @@ func parseMem(meminfo, dmi []string, dmiState string) HWMem {
 			case "Bank Locator":
 				// «P0 CHANNEL A» — на многих платах Locator повторяется в каждом канале
 				if m := channelRe.FindStringSubmatch(v); m != nil {
-					ch := "канал " + m[1]
+					ch := L("канал ") + m[1]
 					if cur.Slot == "" {
 						cur.Slot = ch
 					} else {
@@ -609,7 +609,7 @@ func parsePlatform(lines []string) (HWPlatform, string) {
 		Vendor:   shortVendor(clean("sys_vendor")),
 		Product:  clean("product_name"),
 		BIOSDate: clean("bios_date"),
-		Chassis:  chassisNames[f["chassis_type"]],
+		Chassis:  L(chassisNames[f["chassis_type"]]),
 	}
 	if v := clean("bios_version"); v != "" {
 		if bv := shortVendor(clean("bios_vendor")); bv != "" {

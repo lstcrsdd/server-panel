@@ -21,15 +21,15 @@ const Theme = {
 
 /* ---------- форматирование ---------- */
 const Fmt = (() => {
-  const n0 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 });
-  const n1 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
-  const n2 = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
+  const n0 = new Intl.NumberFormat(I18N.locale, { maximumFractionDigits: 0 });
+  const n1 = new Intl.NumberFormat(I18N.locale, { maximumFractionDigits: 1 });
+  const n2 = new Intl.NumberFormat(I18N.locale, { maximumFractionDigits: 2 });
   const NB = ' ';
   const scaled = (v, base, units, digits) => {
     let i = 0;
     let x = Math.abs(v || 0);
     while (x >= base && i < units.length - 1) { x /= base; i++; }
-    const f = digits != null ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: digits }) : (x < 10 && i > 0 ? n1 : n0);
+    const f = digits != null ? new Intl.NumberFormat(I18N.locale, { maximumFractionDigits: digits }) : (x < 10 && i > 0 ? n1 : n0);
     return f.format(x) + NB + units[i];
   };
   // подпись оси в единой единице, выбранной по верхнему делению шкалы
@@ -38,33 +38,27 @@ const Fmt = (() => {
     let i = 0, div = 1;
     while (top / div >= base && i < units.length - 1) { div *= base; i++; }
     const x = v / div;
-    return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: x < 10 && i > 0 ? 1 : 0 }).format(x) + NB + units[i];
+    return new Intl.NumberFormat(I18N.locale, { maximumFractionDigits: x < 10 && i > 0 ? 1 : 0 }).format(x) + NB + units[i];
   };
   return {
-    axisBytes: (v, top) => axisIn(v, top, 1024, ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ']),
-    axisRate: (v, top) => axisIn(v, top, 1024, ['Б/с', 'КБ/с', 'МБ/с', 'ГБ/с']),
-    axisBits: (v, top) => axisIn(v, top, 1000, ['бит/с', 'Кбит/с', 'Мбит/с', 'Гбит/с']),
-    plural(n, one, few, many) {
-      const a = Math.abs(n) % 100, b = a % 10;
-      if (a > 10 && a < 20) return many;
-      if (b === 1) return one;
-      if (b >= 2 && b <= 4) return few;
-      return many;
-    },
+    axisBytes: (v, top) => axisIn(v, top, 1024, [L('Б'), L('КБ'), L('МБ'), L('ГБ'), L('ТБ')]),
+    axisRate: (v, top) => axisIn(v, top, 1024, [L('Б/с'), L('КБ/с'), L('МБ/с'), L('ГБ/с')]),
+    axisBits: (v, top) => axisIn(v, top, 1000, [L('бит/с'), L('Кбит/с'), L('Мбит/с'), L('Гбит/с')]),
+    plural: (n, one, few, many) => tn(n, one, few, many), // формы зависят от языка — i18n.js
     int: (v) => n0.format(v || 0),
     num: (v, d = 1) => (d === 0 ? n0 : d === 2 ? n2 : n1).format(v || 0),
     pct: (v) => n1.format(v || 0) + NB + '%',
     pct0: (v) => n0.format(v || 0) + NB + '%',
-    bytes: (v, d) => scaled(v, 1024, ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ'], d),
-    rate: (v) => scaled(v, 1024, ['Б/с', 'КБ/с', 'МБ/с', 'ГБ/с'], null),
-    bits: (bits) => scaled(bits, 1000, ['бит/с', 'Кбит/с', 'Мбит/с', 'Гбит/с', 'Тбит/с'], null),
+    bytes: (v, d) => scaled(v, 1024, [L('Б'), L('КБ'), L('МБ'), L('ГБ'), L('ТБ'), L('ПБ')], d),
+    rate: (v) => scaled(v, 1024, [L('Б/с'), L('КБ/с'), L('МБ/с'), L('ГБ/с')], null),
+    bits: (bits) => scaled(bits, 1000, [L('бит/с'), L('Кбит/с'), L('Мбит/с'), L('Гбит/с'), L('Тбит/с')], null),
     dur(sec) {
       sec = Math.max(0, Math.floor(sec || 0));
       const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-      if (d > 0) return `${d}${NB}д ${h}${NB}ч`;
-      if (h > 0) return `${h}${NB}ч ${m}${NB}мин`;
-      if (m > 0) return `${m}${NB}мин`;
-      return `${sec}${NB}с`;
+      if (d > 0) return L('{0}{1}д {2}{3}ч', d, NB, h, NB);
+      if (h > 0) return L('{0}{1}ч {2}{3}мин', h, NB, m, NB);
+      if (m > 0) return L('{0}{1}мин', m, NB);
+      return L('{0}{1}с', sec, NB);
     },
     clock(ms, sec) {
       const d = new Date(ms);
@@ -139,13 +133,13 @@ class TimeChart {
     this.canvas = document.createElement('canvas');
     this.canvas.style.height = this.o.height + 'px';
     this.canvas.setAttribute('role', 'img');
-    this.canvas.setAttribute('aria-label', opts.title || 'график');
+    this.canvas.setAttribute('aria-label', opts.title || L('график'));
     this.tip = document.createElement('div');
     this.tip.className = 'tip';
     this.tip.hidden = true;
     this.empty = document.createElement('div');
     this.empty.className = 'chart-empty';
-    this.empty.textContent = 'Данные собираются…';
+    this.empty.textContent = L('Данные собираются…');
     this.el.append(this.canvas, this.tip, this.empty);
     this.points = [];
     this.t0 = Date.now() - 900e3;
@@ -375,15 +369,15 @@ class TimeChart {
     const head = document.createElement('div');
     head.className = 'tip-t';
     const avg = !!p.a;
-    const per = this.step >= 1800e3 ? 'за 30 минут' : this.step >= 300e3 ? 'за 5 минут' : 'за минуту';
-    head.textContent = (span > 20 * 3600e3 ? Fmt.dateTime(p.t, !avg) : Fmt.clock(p.t, !avg)) + (avg ? ` · среднее ${per}` : '');
+    const per = this.step >= 1800e3 ? L('за 30 минут') : this.step >= 300e3 ? L('за 5 минут') : L('за минуту');
+    head.textContent = (span > 20 * 3600e3 ? Fmt.dateTime(p.t, !avg) : Fmt.clock(p.t, !avg)) + (avg ? L(' · среднее {0}', per) : '');
     tip.append(head);
     const rows = ser.map((s, si) => [s, raw[idx][si]]).filter(([, v]) => Number.isFinite(v));
     for (const [s, v] of (o.stacked ? rows.slice().reverse() : rows)) {
       tip.append(tipRow(`var(--${s.color})`, o.fmt(v, p), s.label));
     }
     if (o.total) {
-      const tr = tipRow(null, o.fmt(o.total(p), p), o.totalLabel || 'Всего');
+      const tr = tipRow(null, o.fmt(o.total(p), p), o.totalLabel || L('Всего'));
       tr.classList.add('total');
       tip.append(tr);
     }

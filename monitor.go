@@ -650,6 +650,11 @@ func (m *Monitor) view(withSpark bool) ServerView {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	v := ServerView{Server: m.srv, Status: m.status, Error: m.err, Since: m.since, Info: m.info, Latest: m.latest, Units: m.units}
+	// для лежащего сервера since — с какого момента нет связи: табло пишет
+	// «нет связи · 3 ч» ещё до того, как сработает оповещение
+	if m.status == "offline" && !m.downSince.IsZero() {
+		v.Since = m.downSince.UnixMilli()
+	}
 	v.PanelKey = m.srv.KeyFile != "" && m.srv.KeyFile == m.app.panelKeyPath()
 	if withSpark {
 		n := int(5 * time.Minute / m.app.interval)
@@ -818,7 +823,7 @@ func (m *Monitor) loop(ctx context.Context, done chan struct{}) {
 		if ctx.Err() != nil {
 			return
 		}
-		msg := "соединение закрыто"
+		msg := L("соединение закрыто")
 		if err != nil {
 			msg = err.Error()
 		}
@@ -895,14 +900,14 @@ func (m *Monitor) stream(ctx context.Context) error {
 	wasStalled := stalled
 	stallMu.Unlock()
 	if wasStalled {
-		return errors.New("сервер перестал присылать данные")
+		return errors.New(L("сервер перестал присылать данные"))
 	}
 	if s := strings.TrimSpace(stderr.String()); s != "" {
 		return errors.New(lastLines(s, 3))
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 255 {
-		return errors.New("SSH-соединение не удалось, ssh не назвал причину")
+		return errors.New(L("SSH-соединение не удалось, ssh не назвал причину"))
 	}
 	if err != nil {
 		return fmt.Errorf("ssh: %v", err)

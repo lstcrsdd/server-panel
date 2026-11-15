@@ -26,13 +26,13 @@ const maxEditSize = 2 << 20 // файлы больше 2 МБ не открыв�
 func cleanRemotePath(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" || !strings.HasPrefix(p, "/") {
-		return "", errors.New("нужен абсолютный путь, например /etc")
+		return "", errors.New(L("нужен абсолютный путь, например /etc"))
 	}
 	if strings.ContainsAny(p, "\x00\n\r") {
-		return "", errors.New("недопустимые символы в пути")
+		return "", errors.New(L("недопустимые символы в пути"))
 	}
 	if len(p) > 4096 {
-		return "", errors.New("слишком длинный путь")
+		return "", errors.New(L("слишком длинный путь"))
 	}
 	return path.Clean(p), nil
 }
@@ -44,13 +44,13 @@ func (a *App) wantRoot(r *http.Request, m *Monitor, ctx context.Context) (prefix
 	}
 	in := m.ensureInfo(ctx)
 	if in == nil {
-		return "", errors.New("не удалось узнать права на сервере")
+		return "", errors.New(L("не удалось узнать права на сервере"))
 	}
 	if in.UID == 0 {
 		return "", nil
 	}
 	if !in.Sudo {
-		return "", errors.New("на сервере нет sudo без пароля — работа «как root» недоступна")
+		return "", errors.New(L("на сервере нет sudo без пароля — работа «как root» недоступна"))
 	}
 	return "sudo -n ", nil
 }
@@ -75,16 +75,16 @@ type FileEntry struct {
 func permError(stderr string) string {
 	s := strings.TrimSpace(stderr)
 	if strings.Contains(s, "Permission denied") || strings.Contains(s, "Operation not permitted") {
-		return "нет доступа — включите «как root»"
+		return L("нет доступа — включите «как root»")
 	}
 	if strings.Contains(s, "a password is required") || strings.Contains(s, "sudo:") {
-		return "sudo требует пароль — работа «как root» недоступна"
+		return L("sudo требует пароль — работа «как root» недоступна")
 	}
 	if strings.Contains(s, "Read-only file system") {
-		return "файловая система только для чтения"
+		return L("файловая система только для чтения")
 	}
 	if strings.Contains(s, "No such file") {
-		return "не найдено"
+		return L("не найдено")
 	}
 	return lastLines(s, 4)
 }
@@ -123,7 +123,7 @@ find . -mindepth 1 -maxdepth 1 -printf '%%f\0%%y\0%%s\0%%T@\0%%m\0%%u\0%%g\0%%l\
 	if !strings.HasPrefix(res.Stdout, "@@PWD ") {
 		msg := permError(res.Stderr)
 		if strings.Contains(res.Stderr, "Not a directory") {
-			msg = "это не папка"
+			msg = L("это не папка")
 		}
 		if msg == "" {
 			msg = res.errText()
@@ -231,7 +231,7 @@ echo
 	}
 	raw, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
-		writeErr(w, 502, "не удалось прочитать файл")
+		writeErr(w, 502, L("не удалось прочитать файл"))
 		return
 	}
 	if utf8.Valid(raw) && !bytes.Contains(raw, []byte{0}) {
@@ -256,7 +256,7 @@ func (a *App) handleFileWrite(w http.ResponseWriter, r *http.Request, m *Monitor
 		SHA     string `json:"sha"` // ожидаемая сумма текущего файла; "" — создать новый
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос или файл слишком большой")
+		writeErr(w, 400, L("неверный запрос или файл слишком большой"))
 		return
 	}
 	p, err := cleanRemotePath(req.Path)
@@ -265,11 +265,11 @@ func (a *App) handleFileWrite(w http.ResponseWriter, r *http.Request, m *Monitor
 		return
 	}
 	if len(req.Content) > maxEditSize {
-		writeErr(w, 400, "файл больше 2 МБ")
+		writeErr(w, 400, L("файл больше 2 МБ"))
 		return
 	}
 	if req.SHA != "" && (len(req.SHA) != 64 || strings.Trim(req.SHA, "0123456789abcdef") != "") {
-		writeErr(w, 400, "неверная контрольная сумма")
+		writeErr(w, 400, L("неверная контрольная сумма"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
@@ -322,9 +322,9 @@ echo "@@OK $(sha256sum -- "$t" | cut -d' ' -f1) $(stat -c '%%s %%Y' -- "$t")"
 	out := strings.TrimSpace(res.Stdout)
 	switch {
 	case strings.HasPrefix(out, "@@CONFLICT"):
-		writeErr(w, 409, "файл изменился на сервере, пока вы его редактировали — откройте его заново")
+		writeErr(w, 409, L("файл изменился на сервере, пока вы его редактировали — откройте его заново"))
 	case strings.HasPrefix(out, "@@EXISTS"):
-		writeErr(w, 409, "такой файл уже есть")
+		writeErr(w, 409, L("такой файл уже есть"))
 	case strings.HasPrefix(out, "@@ERR "):
 		writeErr(w, 400, strings.TrimPrefix(out, "@@ERR "))
 	case strings.HasPrefix(out, "@@OK "):
@@ -342,7 +342,7 @@ echo "@@OK $(sha256sum -- "$t" | cut -d' ' -f1) $(stat -c '%%s %%Y' -- "$t")"
 			msg = res.errText()
 		}
 		if msg == "" {
-			msg = "не удалось сохранить"
+			msg = L("не удалось сохранить")
 		}
 		writeErr(w, 403, msg)
 	}
@@ -351,12 +351,12 @@ echo "@@OK $(sha256sum -- "$t" | cut -d' ' -f1) $(stat -c '%%s %%Y' -- "$t")"
 // protectedPath — что нельзя удалять или переименовывать из панели.
 func protectedPath(p string) string {
 	if strings.Count(p, "/") <= 1 {
-		return "системные папки верхнего уровня удалять и переименовывать из панели нельзя"
+		return L("системные папки верхнего уровня удалять и переименовывать из панели нельзя")
 	}
 	base := path.Base(p)
 	if base == ".ssh" || base == "authorized_keys" || p == "/etc/ssh" || p == "/etc/sudoers" || p == "/etc/sudoers.d" ||
 		p == "/etc/passwd" || p == "/etc/shadow" || p == "/etc/fstab" || strings.HasPrefix(p, "/boot/") || strings.HasPrefix(p, "/proc/") || strings.HasPrefix(p, "/sys/") {
-		return "это может лишить доступа к серверу — сделайте это в терминале, если уверены"
+		return L("это может лишить доступа к серверу — сделайте это в терминале, если уверены")
 	}
 	return ""
 }
@@ -368,7 +368,7 @@ func (a *App) handleFileOp(w http.ResponseWriter, r *http.Request, m *Monitor) {
 		To   string `json:"to"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	p, err := cleanRemotePath(req.Path)
@@ -396,9 +396,9 @@ func (a *App) handleFileOp(w http.ResponseWriter, r *http.Request, m *Monitor) {
 			writeErr(w, 400, msg)
 			return
 		}
-		script = fmt.Sprintf("if [ -e %[2]s ] || [ -L %[2]s ]; then echo 'уже есть файл с таким именем' >&2; exit 1; fi\nmv -n -- %[1]s %[2]s", shq(p), shq(to))
+		script = fmt.Sprintf(L("if [ -e %[2]s ] || [ -L %[2]s ]; then echo 'уже есть файл с таким именем' >&2; exit 1; fi\nmv -n -- %[1]s %[2]s"), shq(p), shq(to))
 	default:
-		writeErr(w, 400, "неизвестное действие")
+		writeErr(w, 400, L("неизвестное действие"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
@@ -417,7 +417,7 @@ func (a *App) handleFileOp(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	if res.Code != 0 {
 		msg := permError(res.Stderr)
 		if strings.Contains(res.Stderr, "File exists") {
-			msg = "уже существует"
+			msg = L("уже существует")
 		}
 		if msg == "" {
 			msg = res.errText()
@@ -477,10 +477,10 @@ func (a *App) handleFileDownload(w http.ResponseWriter, r *http.Request, m *Moni
 	if perr != nil {
 		cancel()
 		_ = cmd.Wait()
-		msg := "это не обычный файл"
+		msg := L("это не обычный файл")
 		if string(first) != "ERR" {
 			if msg = permError(stderr.String()); msg == "" {
-				msg = "не удалось прочитать файл"
+				msg = L("не удалось прочитать файл")
 			}
 		}
 		writeErr(w, 404, msg)
@@ -534,7 +534,7 @@ mv -f -- "$t.sp-up" "$t"`
 		}
 		msg := permError(stderr.String())
 		if code == 7 {
-			writeErr(w, 409, "уже есть файл с таким именем")
+			writeErr(w, 409, L("уже есть файл с таким именем"))
 			return
 		}
 		if msg == "" {

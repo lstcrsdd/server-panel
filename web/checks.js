@@ -1,7 +1,7 @@
 'use strict';
 /* Сайты и порты: проверки снаружи (checks.go). Загружается до app.js. */
 
-const CHECK_PH = 'https://example.com, example.com:443 или tls://example.com:8443';
+const CHECK_PH = L('https://example.com, example.com:443 или tls://example.com:8443');
 
 class ChecksPage {
   constructor() {
@@ -12,17 +12,17 @@ class ChecksPage {
     this.edit = null; // id проверки, которую меняем в форме
     this.el = h('div', { class: 'page' });
     this.formEl = h('div');
-    this.listEl = h('div', null, h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), ' Загрузка…'));
+    this.listEl = h('div', null, h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), L(' Загрузка…')));
     this.el.append(
       h('div', { class: 'page-head' },
         h('div', { class: 'head-main' },
-          h('h1', null, 'Сайты и порты'),
-          h('div', { class: 'head-meta' }, h('span', null, 'Панель раз в минуту проверяет их с этого компьютера: отвечают ли и не истекает ли сертификат')))),
+          h('h1', null, L('Сайты и порты')),
+          h('div', { class: 'head-meta' }, h('span', null, L('Панель раз в минуту проверяет их с этого компьютера: отвечают ли и не истекает ли сертификат'))))),
       this.formEl,
-      h('div', { class: 'section-title' }, 'Проверки'),
+      h('div', { class: 'section-title' }, L('Проверки')),
       this.listEl,
-      h('p', { class: 'muted chk-foot' }, 'Когда сообщать — правила «Сайт или порт не отвечает» и «Сертификат скоро истекает» на странице ',
-        h('a', { href: '#/alerts' }, 'Оповещения'), '.'));
+      h('p', { class: 'muted chk-foot' }, L('Когда сообщать — правила «Сайт или порт не отвечает» и «Сертификат скоро истекает» на странице '),
+        h('a', { href: '#/alerts' }, L('Оповещения')), '.'));
     this.renderForm();
     this.load();
     this.tick = setInterval(() => this.renderList(), 15e3);
@@ -54,40 +54,40 @@ class ChecksPage {
 
   fillServers() {
     const cur = this.srvSel.value;
-    this.srvSel.replaceChildren(h('option', { value: '' }, 'не относится к серверу'),
+    this.srvSel.replaceChildren(h('option', { value: '' }, L('не относится к серверу')),
       ...S.servers.filter((s) => !s.hidden || s.id === cur).map((s) => h('option', { value: s.id, selected: s.id === cur }, s.name)));
   }
 
   renderForm() {
     const c = this.edit ? this.checks.find((x) => x.id === this.edit) : null;
-    const target = h('input', { class: 'input mono', placeholder: CHECK_PH, value: c ? c.target : '', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Адрес' });
-    const name = h('input', { class: 'input', placeholder: 'например «Сайт магазина»', value: c ? c.name || '' : '', maxlength: '80', 'aria-label': 'Название' });
-    this.srvSel = h('select', { class: 'input', 'aria-label': 'Сервер' });
+    const target = h('input', { class: 'input mono', placeholder: CHECK_PH, value: c ? c.target : '', autocomplete: 'off', spellcheck: 'false', 'aria-label': L('Адрес') });
+    const name = h('input', { class: 'input', placeholder: L('например «Сайт магазина»'), value: c ? c.name || '' : '', maxlength: '80', 'aria-label': L('Название') });
+    this.srvSel = h('select', { class: 'input', 'aria-label': L('Сервер') });
     this.fillServers();
     this.srvSel.value = c ? c.server || '' : '';
     const err = h('div', { class: 'hint bad-ink', role: 'alert', hidden: true });
-    const submit = h('button', { class: 'btn primary', type: 'submit' }, ...(c ? ['Сохранить'] : [icon('plus'), 'Добавить']));
+    const submit = h('button', { class: 'btn primary', type: 'submit' }, ...(c ? [L('Сохранить')] : [icon('plus'), L('Добавить')]));
     const form = h('form', { class: 'card chk-form', novalidate: true },
       h('div', { class: 'card-head' }, h('div', null,
-        h('div', { class: 'card-title' }, c ? 'Изменить проверку' : 'Новая проверка'),
-        h('div', { class: 'card-sub' }, 'Сайт — ответ по HTTP(S) и его сертификат; host:порт — открыт ли порт; tls://host:порт — сертификат на любом TLS-порте'))),
+        h('div', { class: 'card-title' }, c ? L('Изменить проверку') : L('Новая проверка')),
+        h('div', { class: 'card-sub' }, L('Сайт — ответ по HTTP(S) и его сертификат; host:порт — открыт ли порт; tls://host:порт — сертификат на любом TLS-порте')))),
       h('div', { class: 'chk-fields' },
-        h('label', { class: 'field chk-target' }, h('span', null, 'Адрес'), target),
-        h('label', { class: 'field' }, h('span', null, 'Название ', h('span', { class: 'muted' }, '— необязательно')), name),
-        h('label', { class: 'field' }, h('span', null, 'Сервер'), this.srvSel)),
+        h('label', { class: 'field chk-target' }, h('span', null, L('Адрес')), target),
+        h('label', { class: 'field' }, h('span', null, L('Название '), h('span', { class: 'muted' }, L('— необязательно'))), name),
+        h('label', { class: 'field' }, h('span', null, L('Сервер')), this.srvSel)),
       err,
       h('div', { class: 'chk-actions' }, submit,
-        c ? h('button', { class: 'btn ghost', type: 'button', onclick: () => { this.edit = null; this.renderForm(); } }, 'Отмена') : null));
+        c ? h('button', { class: 'btn ghost', type: 'button', onclick: () => { this.edit = null; this.renderForm(); } }, L('Отмена')) : null));
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       err.hidden = true;
-      if (!target.value.trim()) { err.textContent = 'Укажите адрес'; err.hidden = false; target.focus(); return; }
+      if (!target.value.trim()) { err.textContent = L('Укажите адрес'); err.hidden = false; target.focus(); return; }
       submit.disabled = true;
       const body = { target: target.value.trim(), name: name.value.trim(), server: this.srvSel.value };
       try {
         if (c) await api(`/checks/${encodeURIComponent(c.id)}`, { method: 'PUT', body });
         else await api('/checks', { method: 'POST', body });
-        toast(c ? 'Проверка сохранена' : 'Проверка добавлена — первый результат через несколько секунд');
+        toast(c ? L('Проверка сохранена') : L('Проверка добавлена — первый результат через несколько секунд'));
         this.edit = null;
         this.renderForm();
       } catch (e) {
@@ -103,11 +103,11 @@ class ChecksPage {
   renderList() {
     if (!this.checks.length) {
       this.listEl.replaceChildren(h('div', { class: 'card empty' },
-        h('b', null, 'Проверок пока нет'),
-        'Добавьте сайт или порт — например адрес панели VPN или порт, к которому подключаются клиенты'));
+        h('b', null, L('Проверок пока нет')),
+        L('Добавьте сайт или порт — например адрес панели VPN или порт, к которому подключаются клиенты')));
       return;
     }
-    const rows = [...this.checks].sort((a, b) => this.rank(a) - this.rank(b) || this.label(a).localeCompare(this.label(b), 'ru'));
+    const rows = [...this.checks].sort((a, b) => this.rank(a) - this.rank(b) || this.label(a).localeCompare(this.label(b), I18N.locale));
     this.listEl.replaceChildren(h('div', { class: 'card flush chk-list' }, rows.map((c) => this.row(c))));
   }
 
@@ -131,33 +131,33 @@ class ChecksPage {
 
     // ответ
     let resp;
-    if (c.off) resp = h('span', { class: 'muted' }, 'на паузе');
-    else if (!r) resp = h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + 'проверяю…');
+    if (c.off) resp = h('span', { class: 'muted' }, L('на паузе'));
+    else if (!r) resp = h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + L('проверяю…'));
     else if (!r.ok) {
       const long = Date.now() - r.since >= 60e3;
-      resp = h('span', { class: 'bad-ink' }, r.err || 'не отвечает',
-        long ? h('span', { class: 'muted' }, ' · уже ' + Fmt.dur((Date.now() - r.since) / 1000)) : null);
+      resp = h('span', { class: 'bad-ink' }, r.err || L('не отвечает'),
+        long ? h('span', { class: 'muted' }, L(' · уже ') + Fmt.dur((Date.now() - r.since) / 1000)) : null);
     } else {
       const bits = [];
       if (r.code) bits.push(String(r.code));
-      if (r.ms != null) bits.push(r.ms + ' мс');
-      resp = h('span', { title: r.code >= 400 ? `Сервер отвечает, но с кодом ${r.code}` : null, class: r.code >= 400 ? 'warn-ink' : null },
-        bits.join(' · ') || 'порт открыт');
+      if (r.ms != null) bits.push(r.ms + L(' мс'));
+      resp = h('span', { title: r.code >= 400 ? L('Сервер отвечает, но с кодом {0}', r.code) : null, class: r.code >= 400 ? 'warn-ink' : null },
+        bits.join(' · ') || L('порт открыт'));
     }
 
     // сертификат
     let cert = null;
     if (r && r.cert) {
-      const ce = r.cert, till = new Date(ce.notAfter).toLocaleDateString('ru-RU');
-      const tip = `Действует до ${till}` + (ce.issuer ? `, выдан ${ce.issuer}` : '');
-      if (ce.err) cert = h('span', { class: 'bad-ink', title: tip }, icon('warn'), 'сертификат: ' + ce.err);
-      else if (ce.days < this.certDays) cert = h('span', { class: 'warn-ink', title: tip }, icon('warn'), 'сертификат истекает через ' + plural(ce.days, 'день', 'дня', 'дней'));
-      else cert = h('span', { class: 'muted', title: tip }, 'сертификат ещё ' + plural(ce.days, 'день', 'дня', 'дней'));
+      const ce = r.cert, till = new Date(ce.notAfter).toLocaleDateString(I18N.locale);
+      const tip = L('Действует до {0}', till) + (ce.issuer ? L(', выдан {0}', ce.issuer) : '');
+      if (ce.err) cert = h('span', { class: 'bad-ink', title: tip }, icon('warn'), L('сертификат: ') + ce.err);
+      else if (ce.days < this.certDays) cert = h('span', { class: 'warn-ink', title: tip }, icon('warn'), L('сертификат истекает через ') + plural(ce.days, 'день', 'дня', 'дней'));
+      else cert = h('span', { class: 'muted', title: tip }, L('сертификат ещё ') + plural(ce.days, 'день', 'дня', 'дней'));
     }
 
-    const when = r && !c.off ? h('span', { class: 'muted chk-when', title: Fmt.dateTime(r.at) }, Date.now() - r.at < 60e3 ? 'только что' : Fmt.dur((Date.now() - r.at) / 1000) + ' назад') : null;
+    const when = r && !c.off ? h('span', { class: 'muted chk-when', title: Fmt.dateTime(r.at) }, Date.now() - r.at < 60e3 ? L('только что') : Fmt.dur((Date.now() - r.at) / 1000) + L(' назад')) : null;
 
-    const runBtn = h('button', { class: 'btn ghost sm icon-only', type: 'button', title: 'Проверить сейчас', 'aria-label': `Проверить ${this.label(c)} сейчас`, disabled: !!c.off }, icon('refresh'));
+    const runBtn = h('button', { class: 'btn ghost sm icon-only', type: 'button', title: L('Проверить сейчас'), 'aria-label': L('Проверить {0} сейчас', this.label(c)), disabled: !!c.off }, icon('refresh'));
     runBtn.addEventListener('click', async () => {
       runBtn.disabled = true;
       runBtn.replaceChildren(h('span', { class: 'spinner' }));
@@ -170,9 +170,9 @@ class ChecksPage {
         runBtn.replaceChildren(icon('refresh'));
       }
     });
-    const pauseBtn = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => this.patch(c, { off: !c.off }) }, c.off ? 'Включить' : 'Пауза');
-    const editBtn = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { this.edit = c.id; this.renderForm(); this.formEl.scrollIntoView({ block: 'nearest' }); } }, 'Изменить');
-    const delBtn = h('button', { class: 'btn ghost sm danger', type: 'button', onclick: () => this.remove(c) }, 'Удалить');
+    const pauseBtn = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => this.patch(c, { off: !c.off }) }, c.off ? L('Включить') : L('Пауза'));
+    const editBtn = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { this.edit = c.id; this.renderForm(); this.formEl.scrollIntoView({ block: 'nearest' }); } }, L('Изменить'));
+    const delBtn = h('button', { class: 'btn ghost sm danger', type: 'button', onclick: () => this.remove(c) }, L('Удалить'));
 
     return h('div', { class: 'chk-row' + (c.off ? ' dim' : '') },
       h('span', { class: 'dot ' + state }),
@@ -188,7 +188,7 @@ class ChecksPage {
   }
 
   async remove(c) {
-    const ok = await confirmDialog({ title: `Удалить проверку «${this.label(c)}»?`, text: 'Панель перестанет её проверять, а активное оповещение по ней снимется.', ok: 'Удалить', danger: true });
+    const ok = await confirmDialog({ title: L('Удалить проверку «{0}»?', this.label(c)), text: L('Панель перестанет её проверять, а активное оповещение по ней снимется.'), ok: L('Удалить'), danger: true });
     if (!ok) return;
     try {
       await api(`/checks/${encodeURIComponent(c.id)}`, { method: 'DELETE' });

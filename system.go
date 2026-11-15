@@ -308,14 +308,14 @@ func (a *App) handleAptJob(w http.ResponseWriter, r *http.Request, m *Monitor) {
 		Action string `json:"action"`
 	}
 	if err := readJSON(r, &req); err != nil || (req.Action != "update" && req.Action != "upgrade") {
-		writeErr(w, 400, "неизвестное действие")
+		writeErr(w, 400, L("неизвестное действие"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
 	defer cancel()
 	in := m.ensureInfo(ctx)
 	if in == nil || (in.UID != 0 && !in.Sudo) {
-		writeErr(w, 403, "нужен root или sudo без пароля")
+		writeErr(w, 403, L("нужен root или sudo без пароля"))
 		return
 	}
 	sudo := m.sudo(ctx)
@@ -355,19 +355,19 @@ SP_APT_EOF
 		u := strings.TrimSuffix(strings.TrimSpace(strings.SplitN(out, "@@BUSY", 2)[1]), ".service")
 		writeJSON(w, 200, map[string]any{"unit": u, "already": true})
 	case strings.Contains(out, "@@LOCKED"):
-		writeErr(w, 409, "на сервере уже работает apt или dpkg (например, автоматические обновления) — попробуйте через несколько минут")
+		writeErr(w, 409, L("на сервере уже работает apt или dpkg (например, автоматические обновления) — попробуйте через несколько минут"))
 	case strings.Contains(out, "@@STARTED"):
 		writeJSON(w, 200, map[string]any{"unit": unit})
 	default:
 		msg := strings.TrimSpace(out + "\n" + res.Stderr)
-		writeErr(w, 500, "не удалось запустить: "+lastLines(msg, 4))
+		writeErr(w, 500, L("не удалось запустить: ")+lastLines(msg, 4))
 	}
 }
 
 func (a *App) handleAptJobLog(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	unit := r.URL.Query().Get("unit")
 	if !jobUnitRe.MatchString(unit) {
-		writeErr(w, 400, "неверное задание")
+		writeErr(w, 400, L("неверное задание"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -406,7 +406,7 @@ func (a *App) handleUnban(w http.ResponseWriter, r *http.Request, m *Monitor) {
 		IP   string `json:"ip"`
 	}
 	if err := readJSON(r, &req); err != nil || !jailRe.MatchString(req.Jail) || net.ParseIP(req.IP) == nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)

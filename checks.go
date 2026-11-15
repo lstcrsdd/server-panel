@@ -97,14 +97,14 @@ func validHost(h string) bool {
 func parseHostPort(s string) (string, string, error) {
 	h, p, err := net.SplitHostPort(s)
 	if err != nil {
-		return "", "", errors.New("укажите адрес и порт через двоеточие, например example.com:443")
+		return "", "", errors.New(L("укажите адрес и порт через двоеточие, например example.com:443"))
 	}
 	n, err := strconv.Atoi(p)
 	if err != nil || n < 1 || n > 65535 {
-		return "", "", errors.New("порт — число от 1 до 65535")
+		return "", "", errors.New(L("порт — число от 1 до 65535"))
 	}
 	if !validHost(h) {
-		return "", "", errors.New("неверное имя или IP-адрес")
+		return "", "", errors.New(L("неверное имя или IP-адрес"))
 	}
 	return strings.ToLower(h), strconv.Itoa(n), nil
 }
@@ -112,10 +112,10 @@ func parseHostPort(s string) (string, string, error) {
 func parseCheckTarget(s string) (checkTarget, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return checkTarget{}, errors.New("укажите адрес")
+		return checkTarget{}, errors.New(L("укажите адрес"))
 	}
 	if len(s) > 500 || strings.ContainsAny(s, " \t\r\n") {
-		return checkTarget{}, errors.New("неверный адрес")
+		return checkTarget{}, errors.New(L("неверный адрес"))
 	}
 	low := strings.ToLower(s)
 	switch {
@@ -134,18 +134,18 @@ func parseCheckTarget(s string) (checkTarget, error) {
 		s, low = "https://"+s, "https://"+low
 	}
 	if !strings.HasPrefix(low, "http://") && !strings.HasPrefix(low, "https://") {
-		return checkTarget{}, errors.New("поддерживаются адреса http://, https://, host:порт и tls://host:порт")
+		return checkTarget{}, errors.New(L("поддерживаются адреса http://, https://, host:порт и tls://host:порт"))
 	}
 	u, err := url.Parse(s)
 	if err != nil || u.Hostname() == "" || !validHost(u.Hostname()) {
-		return checkTarget{}, errors.New("неверный адрес сайта")
+		return checkTarget{}, errors.New(L("неверный адрес сайта"))
 	}
 	if u.User != nil {
-		return checkTarget{}, errors.New("уберите из адреса логин и пароль")
+		return checkTarget{}, errors.New(L("уберите из адреса логин и пароль"))
 	}
 	if p := u.Port(); p != "" {
 		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
-			return checkTarget{}, errors.New("порт — число от 1 до 65535")
+			return checkTarget{}, errors.New(L("порт — число от 1 до 65535"))
 		}
 	}
 	u.Scheme = strings.ToLower(u.Scheme)
@@ -197,7 +197,7 @@ func runCheck(ctx context.Context, t checkTarget) *CheckResult {
 		defer tr.CloseIdleConnections()
 		cl := &http.Client{Transport: tr, Timeout: 3 * checkTimeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
-				return errors.New("слишком много перенаправлений")
+				return errors.New(L("слишком много перенаправлений"))
 			}
 			return nil
 		}}
@@ -220,7 +220,7 @@ func runCheck(ctx context.Context, t checkTarget) *CheckResult {
 		// 4xx — сервер жив и отвечает (часто так отвечают панели на «/»)
 		res.OK = resp.StatusCode < 500
 		if !res.OK {
-			res.Err = fmt.Sprintf("сервер ответил %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+			res.Err = fmt.Sprintf(L("сервер ответил %d %s"), resp.StatusCode, http.StatusText(resp.StatusCode))
 		}
 	case "tcp", "tls":
 		d := &net.Dialer{Timeout: checkTimeout}
@@ -272,11 +272,11 @@ func certCheck(cs tls.ConnectionState, host string) *CertInfo {
 	now := time.Now()
 	switch {
 	case now.After(leaf.NotAfter):
-		info.Err = "истёк " + leaf.NotAfter.Local().Format("02.01.2006")
+		info.Err = L("истёк ") + leaf.NotAfter.Local().Format("02.01.2006")
 	case now.Before(leaf.NotBefore):
-		info.Err = "ещё не действует (с " + leaf.NotBefore.Local().Format("02.01.2006") + ")"
+		info.Err = L("ещё не действует (с ") + leaf.NotBefore.Local().Format("02.01.2006") + ")"
 	case leaf.VerifyHostname(host) != nil:
-		info.Err = "выдан не для " + host
+		info.Err = L("выдан не для ") + host
 	default:
 		pool := x509.NewCertPool()
 		for _, c := range cs.PeerCertificates[1:] {
@@ -284,9 +284,9 @@ func certCheck(cs tls.ConnectionState, host string) *CertInfo {
 		}
 		if _, err := leaf.Verify(x509.VerifyOptions{DNSName: host, Intermediates: pool}); err != nil {
 			if leaf.Subject.String() == leaf.Issuer.String() {
-				info.Err = "самоподписанный"
+				info.Err = L("самоподписанный")
 			} else {
-				info.Err = "выдан неизвестным центром сертификации"
+				info.Err = L("выдан неизвестным центром сертификации")
 			}
 		}
 	}
@@ -303,27 +303,27 @@ func netErrRu(err error) string {
 	var ne net.Error
 	switch {
 	case errors.As(err, &dnsErr) && dnsErr.IsNotFound:
-		return "домен не найден"
+		return L("домен не найден")
 	case errors.As(err, &dnsErr):
-		return "не удалось узнать IP-адрес (DNS)"
+		return L("не удалось узнать IP-адрес (DNS)")
 	case errors.Is(err, syscall.ECONNREFUSED):
-		return "соединение отклонено — порт закрыт"
+		return L("соединение отклонено — порт закрыт")
 	case errors.Is(err, syscall.ECONNRESET):
-		return "соединение сброшено"
+		return L("соединение сброшено")
 	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH):
-		return "сеть или узел недоступны"
+		return L("сеть или узел недоступны")
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, os.ErrDeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
-		return fmt.Sprintf("нет ответа за %d с", int(checkTimeout.Seconds()))
+		return fmt.Sprintf(L("нет ответа за %d с"), int(checkTimeout.Seconds()))
 	case errors.Is(err, io.EOF):
-		return "соединение закрыто сервером"
+		return L("соединение закрыто сервером")
 	}
 	var re tls.RecordHeaderError
 	if errors.As(err, &re) {
-		return "по этому адресу не TLS"
+		return L("по этому адресу не TLS")
 	}
 	s := err.Error()
 	if strings.Contains(s, "tls:") || strings.Contains(s, "handshake") {
-		return "ошибка TLS: " + s
+		return L("ошибка TLS: ") + s
 	}
 	return s
 }
@@ -477,7 +477,7 @@ func (a *App) applyCheck(c *Check, req checkReq) string {
 	if req.Server != nil {
 		id := strings.TrimSpace(*req.Server)
 		if id != "" && a.mons[id] == nil {
-			return "сервер не найден"
+			return L("сервер не найден")
 		}
 		c.Server = id
 	}
@@ -491,7 +491,7 @@ func (a *App) applyCheck(c *Check, req checkReq) string {
 	}
 	for _, o := range a.settings.Checks {
 		if o.ID != c.ID && o.Target == c.Target {
-			return "такая проверка уже есть"
+			return L("такая проверка уже есть")
 		}
 	}
 	return ""
@@ -507,14 +507,14 @@ func (a *App) kickCheck(id string) {
 func (a *App) handleAddCheck(w http.ResponseWriter, r *http.Request) {
 	var req checkReq
 	if err := readJSON(r, &req); err != nil || req.Target == nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	c := &Check{ID: newID(6), Created: time.Now().UnixMilli()}
 	a.mu.Lock()
 	if len(a.settings.Checks) >= maxChecks {
 		a.mu.Unlock()
-		writeErr(w, 400, "слишком много проверок")
+		writeErr(w, 400, L("слишком много проверок"))
 		return
 	}
 	if msg := a.applyCheck(c, req); msg != "" {
@@ -537,7 +537,7 @@ func (a *App) handleAddCheck(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	var req checkReq
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	id := r.PathValue("cid")
@@ -550,7 +550,7 @@ func (a *App) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if c == nil {
 		a.mu.Unlock()
-		writeErr(w, 404, "проверка не найдена")
+		writeErr(w, 404, L("проверка не найдена"))
 		return
 	}
 	next := *c
@@ -589,7 +589,7 @@ func (a *App) handleDeleteCheck(w http.ResponseWriter, r *http.Request) {
 	err := a.saveSettings()
 	a.mu.Unlock()
 	if !found {
-		writeErr(w, 404, "проверка не найдена")
+		writeErr(w, 404, L("проверка не найдена"))
 		return
 	}
 	if err != nil {
@@ -614,11 +614,11 @@ func (a *App) handleRunCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if c == nil {
-		writeErr(w, 404, "проверка не найдена")
+		writeErr(w, 404, L("проверка не найдена"))
 		return
 	}
 	if c.Off {
-		writeErr(w, 400, "проверка на паузе")
+		writeErr(w, 400, L("проверка на паузе"))
 		return
 	}
 	a.checkAll(r.Context(), id)

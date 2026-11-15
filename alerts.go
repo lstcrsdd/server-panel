@@ -244,24 +244,24 @@ func (al *Alerts) run(ctx context.Context) {
 
 func fmtMin(m float64) string {
 	if m < 1 {
-		return fmt.Sprintf("%d с", int(m*60+0.5))
+		return fmt.Sprintf(L("%d с"), int(m*60+0.5))
 	}
 	if m == float64(int(m)) {
-		return fmt.Sprintf("%d мин", int(m))
+		return fmt.Sprintf(L("%d мин"), int(m))
 	}
-	return strconv.FormatFloat(m, 'f', 1, 64) + " мин"
+	return strconv.FormatFloat(m, 'f', 1, 64) + L(" мин")
 }
 
 func fmtAgo(d time.Duration) string {
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("%d с", int(d.Seconds()))
+		return fmt.Sprintf(L("%d с"), int(d.Seconds()))
 	case d < time.Hour:
-		return fmt.Sprintf("%d мин", int(d.Minutes()))
+		return fmt.Sprintf(L("%d мин"), int(d.Minutes()))
 	case d < 48*time.Hour:
-		return fmt.Sprintf("%d ч %d мин", int(d.Hours()), int(d.Minutes())%60)
+		return fmt.Sprintf(L("%d ч %d мин"), int(d.Hours()), int(d.Minutes())%60)
 	default:
-		return fmt.Sprintf("%d дн", int(d.Hours()/24))
+		return fmt.Sprintf(L("%d дн"), int(d.Hours()/24))
 	}
 }
 
@@ -302,6 +302,8 @@ func (al *Alerts) evaluate() {
 	evaluated := map[string]bool{} // "<server>|<kind>" — что удалось проверить
 	active := map[string]bool{}    // серверы под наблюдением
 	seenChanged := false
+	levels := map[string]byte{} // для полоски доступности (avail.go)
+	keep := map[string]bool{}
 
 	type avg struct {
 		v  float64
@@ -323,6 +325,19 @@ func (al *Alerts) evaluate() {
 			memAvg.v, memAvg.ok = windowAvg(m.raw, r.Mem.Min, al.a.interval, func(p Point) float64 { return p.Mem })
 		}
 		m.mu.RUnlock()
+		keep[srv.ID] = true
+		if srv.Monitor && !srv.Hidden {
+			switch status {
+			case "online":
+				levels[srv.ID] = availOK
+			case "offline":
+				// секундный обрыв SSH-потока — ещё не простой: иначе он
+				// закрасил бы красным всё получасовое деление
+				if !down.IsZero() && now.Sub(down) >= availDownAfter {
+					levels[srv.ID] = availDown
+				}
+			}
+		}
 		if !srv.Monitor || srv.Hidden || srv.Mute {
 			continue
 		}
@@ -341,9 +356,9 @@ func (al *Alerts) evaluate() {
 		if r.Offline.On && status == "offline" && !down.IsZero() {
 			if now.Sub(down) >= time.Duration(r.Offline.Min*float64(time.Minute)) {
 				conds = append(conds, cond{key: key("offline", ""), server: id, name: name, kind: "offline",
-					text: "нет связи " + fmtAgo(now.Sub(down)), start: down})
+					text: L("нет связи ") + fmtAgo(now.Sub(down)), start: down})
 			} else if firing(key("offline", "")) {
-				add("offline", "", "нет связи", 0)
+				add("offline", "", L("нет связи"), 0)
 			}
 		}
 		if status != "online" {
@@ -357,8 +372,8 @@ func (al *Alerts) evaluate() {
 			avg  avg
 			what string
 		}{
-			{"cpu", r.CPU, cpuAvg, "процессор"},
-			{"mem", r.Mem, memAvg, "память"},
+			{"cpu", r.CPU, cpuAvg, L("процессор")},
+			{"mem", r.Mem, memAvg, L("память")},
 		} {
 			if !x.rule.On || x.rule.Min <= 0 {
 				mark(x.kind)
@@ -373,7 +388,7 @@ func (al *Alerts) evaluate() {
 				thr -= 5
 			}
 			if x.avg.v >= thr {
-				add(x.kind, "", fmt.Sprintf("%s %.0f%% в среднем за %s", x.what, x.avg.v, fmtMin(x.rule.Min)), 0)
+				add(x.kind, "", fmt.Sprintf(L("%s %.0f%% в среднем за %s"), x.what, x.avg.v, fmtMin(x.rule.Min)), 0)
 			}
 		}
 
@@ -388,7 +403,7 @@ func (al *Alerts) evaluate() {
 					thr -= 1
 				}
 				if f.Pct >= thr {
-					add("disk", f.Mount, fmt.Sprintf("диск %s заполнен на %.0f%%", f.Mount, f.Pct), 0)
+					add("disk", f.Mount, fmt.Sprintf(L("диск %s заполнен на %.0f%%"), f.Mount, f.Pct), 0)
 				}
 			}
 		}
@@ -402,7 +417,7 @@ func (al *Alerts) evaluate() {
 					thr -= 3
 				}
 				if t.c >= thr {
-					add("temp", t.subj, fmt.Sprintf("перегрев: %s %.0f °C (порог %.0f °C)", t.who, t.c, t.crit), time.Duration(r.Temp.Min*float64(time.Minute)))
+					add("temp", t.subj, fmt.Sprintf(L("перегрев: %s %.0f °C (порог %.0f °C)"), t.who, t.c, t.crit), time.Duration(r.Temp.Min*float64(time.Minute)))
 				}
 			}
 		}
@@ -428,18 +443,18 @@ func (al *Alerts) evaluate() {
 				}
 				starting := (u.Active == "activating" && !restarting(u.Sub)) || u.Active == "reloading"
 				if r.VPN.On && seen[u.Unit] && u.Active != "active" && !starting {
-					add("vpn", u.Unit, fmt.Sprintf("VPN-служба %s не работает (%s)", short, stateRu(u.Active, u.Sub)), time.Duration(r.VPN.Min*float64(time.Minute)))
+					add("vpn", u.Unit, fmt.Sprintf(L("VPN-служба %s не работает (%s)"), short, stateRu(u.Active, u.Sub)), time.Duration(r.VPN.Min*float64(time.Minute)))
 				}
 				continue
 			}
 			switch {
 			case !r.Failed.On:
 			case u.Active == "failed":
-				add("failed", u.Unit, fmt.Sprintf("служба %s завершилась с ошибкой", short), 50*time.Second)
+				add("failed", u.Unit, fmt.Sprintf(L("служба %s завершилась с ошибкой"), short), 50*time.Second)
 			case restarting(u.Sub):
 				// Restart=always: между попытками служба не «failed», а «activating
 				// (auto-restart)». Одна перезагрузка после сбоя — не повод, поэтому ждём.
-				add("failed", u.Unit, fmt.Sprintf("служба %s падает и перезапускается по кругу", short), 2*time.Minute)
+				add("failed", u.Unit, fmt.Sprintf(L("служба %s падает и перезапускается по кругу"), short), 2*time.Minute)
 			}
 		}
 		// служба исчезла из списка (удалена или выгружена) — больше не следим
@@ -496,7 +511,7 @@ func (al *Alerts) evaluate() {
 		evaluated[id+"|check"] = true
 		if r.Check.On && !res.OK {
 			conds = append(conds, cond{key: id + "|check|", server: id, name: name, kind: "check", subject: c.Target,
-				text: "не отвечает: " + res.Err, wait: time.Duration(r.Check.Min * float64(time.Minute)), start: time.UnixMilli(res.Since)})
+				text: L("не отвечает: ") + res.Err, wait: time.Duration(r.Check.Min * float64(time.Minute)), start: time.UnixMilli(res.Since)})
 		}
 		// о сертификате судим, только когда он получен
 		if res.Cert == nil && t.tls() {
@@ -508,9 +523,9 @@ func (al *Alerts) evaluate() {
 		}
 		ce := res.Cert
 		exp := time.UnixMilli(ce.NotAfter).Format("02.01.2006")
-		who := "сертификат " + ce.Host // имя хоста не повторяем, если оно уже в названии
+		who := L("сертификат ") + ce.Host // имя хоста не повторяем, если оно уже в названии
 		if strings.Contains(name, ce.Host) {
-			who = "сертификат"
+			who = L("сертификат")
 		}
 		switch {
 		case ce.Err != "":
@@ -518,7 +533,7 @@ func (al *Alerts) evaluate() {
 				text: who + ": " + ce.Err})
 		case ce.Days < r.Cert.Days:
 			conds = append(conds, cond{key: id + "|cert|", server: id, name: name, kind: "cert", subject: ce.Host,
-				text: fmt.Sprintf("%s истекает через %d %s (%s)", who, ce.Days, plural(ce.Days, "день", "дня", "дней"), exp)})
+				text: fmt.Sprintf(L("%s истекает через %d %s (%s)"), who, ce.Days, plural(ce.Days, "день", "дня", "дней"), exp)})
 		}
 	}
 
@@ -608,13 +623,22 @@ func (al *Alerts) evaluate() {
 		if e.State == "fire" || cfg.Rules.Recovery {
 			send = append(send, e)
 		} else {
-			e.Sent = "о восстановлении не сообщаем"
+			e.Sent = L("о восстановлении не сообщаем")
 		}
 	}
 	if len(batch) > 0 || silent || seenChanged {
 		al.save()
 	}
+	for _, f := range al.st.Firing {
+		if f.Kind != "offline" && levels[f.Server] == availOK {
+			levels[f.Server] = availWarn
+		}
+	}
+	availChanged := al.a.avail.mark(levels, keep, now)
 	al.mu.Unlock()
+	if availChanged {
+		al.a.hub.send("avail", al.a.avail.view(now))
+	}
 
 	if len(batch) == 0 {
 		if silent {
@@ -640,15 +664,15 @@ var unitKinds = map[string]bool{"failed": true, "vpn": true}
 func stateRu(active, sub string) string {
 	switch active {
 	case "failed":
-		return "ошибка"
+		return L("ошибка")
 	case "activating":
 		if restarting(sub) {
-			return "падает и перезапускается по кругу"
+			return L("падает и перезапускается по кругу")
 		}
 	case "inactive":
-		return "остановлена"
+		return L("остановлена")
 	case "deactivating":
-		return "останавливается"
+		return L("останавливается")
 	}
 	return active + "/" + sub
 }
@@ -657,32 +681,32 @@ func recoveryText(f *Firing, now time.Time) string {
 	d := fmtAgo(now.Sub(time.UnixMilli(f.Since)))
 	switch f.Kind {
 	case "offline":
-		return "связь восстановлена (не было " + d + ")"
+		return L("связь восстановлена (не было ") + d + ")"
 	case "cpu":
-		return "нагрузка на процессор снизилась"
+		return L("нагрузка на процессор снизилась")
 	case "mem":
-		return "память освободилась"
+		return L("память освободилась")
 	case "disk":
-		return "на диске " + f.Subject + " снова есть место"
+		return L("на диске ") + f.Subject + L(" снова есть место")
 	case "failed":
-		return "служба " + strings.TrimSuffix(f.Subject, ".service") + " больше не в ошибке"
+		return L("служба ") + strings.TrimSuffix(f.Subject, ".service") + L(" больше не в ошибке")
 	case "vpn":
-		return "VPN-служба " + strings.TrimSuffix(f.Subject, ".service") + " снова работает (не работала " + d + ")"
+		return L("VPN-служба ") + strings.TrimSuffix(f.Subject, ".service") + L(" снова работает (не работала ") + d + ")"
 	case "check":
-		return "снова отвечает (не отвечал " + d + ")"
+		return L("снова отвечает (не отвечал ") + d + ")"
 	case "cert":
-		return "сертификат " + f.Subject + " в порядке"
+		return L("сертификат ") + f.Subject + L(" в порядке")
 	case "temp":
 		switch {
 		case f.Subject == "cpu":
-			return "процессор остыл"
+			return L("процессор остыл")
 		case strings.HasPrefix(f.Subject, "gpu:"):
-			return "видеокарта остыла"
+			return L("видеокарта остыла")
 		case strings.HasPrefix(f.Subject, "disk:"):
-			return "диск " + strings.TrimPrefix(f.Subject, "disk:") + " остыл"
+			return L("диск ") + strings.TrimPrefix(f.Subject, "disk:") + L(" остыл")
 		}
 	}
-	return "в норме: " + f.Text
+	return L("в норме: ") + f.Text
 }
 
 // addEvent вызывается под al.mu.
@@ -734,7 +758,7 @@ func (al *Alerts) deliver(ch AlertChannels, evs []*AlertEvent) {
 		if ch.Telegram {
 			switch {
 			case byWatch[e]:
-				sent = append(sent, "Telegram — пишет сторож на сервере")
+				sent = append(sent, L("Telegram — пишет сторож на сервере"))
 			case tgErr != nil:
 				errs = append(errs, "Telegram: "+tgErr.Error())
 			default:
@@ -744,9 +768,9 @@ func (al *Alerts) deliver(ch AlertChannels, evs []*AlertEvent) {
 		e.Sent = strings.Join(sent, ", ")
 		e.Err = strings.Join(errs, "; ")
 		if !al.notify {
-			e.Sent, e.Err = "", "отправка отключена флагом -notify=false"
+			e.Sent, e.Err = "", L("отправка отключена флагом -notify=false")
 		} else if len(sent) == 0 && len(errs) == 0 {
-			e.Err = "не выбран ни один способ доставки"
+			e.Err = L("не выбран ни один способ доставки")
 		}
 	}
 	al.save()
@@ -768,7 +792,7 @@ func composeMessage(evs []*AlertEvent) (title, body string) {
 		e := evs[0]
 		t := "Method Network · " + e.Name
 		if e.State == "ok" {
-			return t, "В норме: " + e.Text
+			return t, L("В норме: ") + e.Text
 		}
 		return t, e.Text
 	}
@@ -779,19 +803,7 @@ func composeMessage(evs []*AlertEvent) (title, body string) {
 	return fmt.Sprintf("Method Network · %d %s", len(evs), plural(len(evs), "событие", "события", "событий")), strings.Join(lines, "\n")
 }
 
-func plural(n int, one, few, many string) string {
-	n %= 100
-	if n >= 11 && n <= 14 {
-		return many
-	}
-	switch n % 10 {
-	case 1:
-		return one
-	case 2, 3, 4:
-		return few
-	}
-	return many
-}
+func plural(n int, one, few, many string) string { return pluralForm(n, one, few, many) }
 
 func localNotifyName() string {
 	switch runtime.GOOS {
@@ -800,7 +812,7 @@ func localNotifyName() string {
 	case "windows":
 		return "Windows"
 	}
-	return "рабочий стол"
+	return L("рабочий стол")
 }
 
 // winToast показывает всплывающее уведомление Windows 10/11 через WinRT из
@@ -837,7 +849,7 @@ func notifyLocal(title, body string) error {
 		cmd.Env = append(os.Environ(), "SP_TITLE="+title, "SP_BODY="+body)
 	default:
 		if _, err := exec.LookPath("notify-send"); err != nil {
-			return errors.New("не найден notify-send (пакет libnotify-bin)")
+			return errors.New(L("не найден notify-send (пакет libnotify-bin)"))
 		}
 		cmd = exec.CommandContext(ctx, "notify-send", "--", title, body)
 	}
@@ -853,7 +865,7 @@ var tgClient = &http.Client{Timeout: 15 * time.Second}
 
 func telegramCall(token, method string, form url.Values) (json.RawMessage, error) {
 	if !tgTokenRe.MatchString(token) {
-		return nil, errors.New("неверный токен бота")
+		return nil, errors.New(L("неверный токен бота"))
 	}
 	resp, err := tgClient.PostForm("https://api.telegram.org/bot"+token+"/"+method, form)
 	if err != nil {
@@ -874,11 +886,11 @@ func telegramCall(token, method string, form url.Values) (json.RawMessage, error
 		msg := r.Description
 		switch {
 		case resp.StatusCode == 401:
-			msg = "бот не найден — проверьте токен"
+			msg = L("бот не найден — проверьте токен")
 		case strings.Contains(msg, "chat not found"):
-			msg = "чат не найден — напишите боту /start и проверьте chat id"
+			msg = L("чат не найден — напишите боту /start и проверьте chat id")
 		case strings.Contains(msg, "bot was blocked"):
-			msg = "бот заблокирован в этом чате"
+			msg = L("бот заблокирован в этом чате")
 		}
 		return nil, errors.New(msg)
 	}
@@ -887,7 +899,7 @@ func telegramCall(token, method string, form url.Values) (json.RawMessage, error
 
 func telegramSend(token, chat, text string) error {
 	if strings.TrimSpace(chat) == "" {
-		return errors.New("не указан chat id")
+		return errors.New(L("не указан chat id"))
 	}
 	if len([]rune(text)) > 3900 {
 		text = string([]rune(text)[:3900]) + "…"
@@ -967,10 +979,10 @@ func (a *App) handleAlerts(w http.ResponseWriter, r *http.Request) {
 
 func validRule(r Rule, pct bool) error {
 	if r.Min < 0 || r.Min > 1440 {
-		return errors.New("время должно быть от 0 до 1440 минут")
+		return errors.New(L("время должно быть от 0 до 1440 минут"))
 	}
 	if pct && (r.Pct < 1 || r.Pct > 100) {
-		return errors.New("порог должен быть от 1 до 100 %")
+		return errors.New(L("порог должен быть от 1 до 100 %"))
 	}
 	return nil
 }
@@ -978,13 +990,13 @@ func validRule(r Rule, pct bool) error {
 func (a *App) handleAlertConfig(w http.ResponseWriter, r *http.Request) {
 	var req AlertConfig
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	fillRules(&req.Rules, a.alertConfig().Rules)
 	rr := req.Rules
 	if rr.Cert.Days < 1 || rr.Cert.Days > 365 {
-		writeErr(w, 400, "срок сертификата — от 1 до 365 дней")
+		writeErr(w, 400, L("срок сертификата — от 1 до 365 дней"))
 		return
 	}
 	for _, x := range []struct {
@@ -997,7 +1009,7 @@ func (a *App) handleAlertConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if rr.CPU.Min < 0.5 || rr.Mem.Min < 0.5 {
-		writeErr(w, 400, "для процессора и памяти время — не меньше 0,5 минуты")
+		writeErr(w, 400, L("для процессора и памяти время — не меньше 0,5 минуты"))
 		return
 	}
 	ch := &req.Channels
@@ -1007,15 +1019,15 @@ func (a *App) handleAlertConfig(w http.ResponseWriter, r *http.Request) {
 		ch.TGToken = old.Channels.TGToken
 	}
 	if ch.TGToken != "" && !tgTokenRe.MatchString(ch.TGToken) {
-		writeErr(w, 400, "токен бота выглядит неверно: нужен вид 123456789:AA…")
+		writeErr(w, 400, L("токен бота выглядит неверно: нужен вид 123456789:AA…"))
 		return
 	}
 	if ch.TGChat != "" && !regexp.MustCompile(`^(-?\d{1,20}|@[A-Za-z0-9_]{4,64})$`).MatchString(ch.TGChat) {
-		writeErr(w, 400, "chat id — это число (например 123456789 или -100…) или @имя_канала")
+		writeErr(w, 400, L("chat id — это число (например 123456789 или -100…) или @имя_канала"))
 		return
 	}
 	if ch.Telegram && (ch.TGToken == "" || ch.TGChat == "") {
-		writeErr(w, 400, "для Telegram нужны токен бота и chat id")
+		writeErr(w, 400, L("для Telegram нужны токен бота и chat id"))
 		return
 	}
 	a.mu.Lock()
@@ -1037,14 +1049,14 @@ func (a *App) handleAlertTest(w http.ResponseWriter, r *http.Request) {
 		Chat    string `json:"chat"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	if !a.alerts.notify {
-		writeErr(w, 409, "отправка отключена флагом -notify=false")
+		writeErr(w, 409, L("отправка отключена флагом -notify=false"))
 		return
 	}
-	title, body := "Method Network", "Проверка оповещений: если вы это видите, всё настроено."
+	title, body := "Method Network", L("Проверка оповещений: если вы это видите, всё настроено.")
 	var err error
 	switch req.Channel {
 	case "macos":
@@ -1060,7 +1072,7 @@ func (a *App) handleAlertTest(w http.ResponseWriter, r *http.Request) {
 		}
 		err = telegramSend(token, chat, title+"\n"+body)
 	default:
-		writeErr(w, 400, "неизвестный способ доставки")
+		writeErr(w, 400, L("неизвестный способ доставки"))
 		return
 	}
 	if err != nil {
@@ -1075,7 +1087,7 @@ func (a *App) handleTelegramChats(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	token := strings.TrimSpace(req.Token)
@@ -1083,7 +1095,7 @@ func (a *App) handleTelegramChats(w http.ResponseWriter, r *http.Request) {
 		token = a.alertConfig().Channels.TGToken
 	}
 	if token == "" {
-		writeErr(w, 400, "сначала укажите токен бота")
+		writeErr(w, 400, L("сначала укажите токен бота"))
 		return
 	}
 	chats, err := telegramChats(token)

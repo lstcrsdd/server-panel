@@ -298,7 +298,7 @@ func tempAlarms(ts []TempSensor) []tempAlarm {
 		if crit == 0 {
 			crit = 95
 		}
-		out = append(out, tempAlarm{"cpu", "процессор", c, crit})
+		out = append(out, tempAlarm{"cpu", L("процессор"), c, crit})
 	}
 	type dev struct {
 		kind, dev, chip string
@@ -325,9 +325,9 @@ func tempAlarms(ts []TempSensor) []tempAlarm {
 	}
 	for _, d := range devs {
 		crit := d.crit
-		who := "видеокарта"
+		who := L("видеокарта")
 		if d.kind == "disk" {
-			who = strings.TrimSpace("диск " + d.dev)
+			who = strings.TrimSpace(L("диск ") + d.dev)
 			if crit == 0 {
 				crit = 80
 				if d.chip == "drivetemp" {
@@ -523,18 +523,18 @@ func (a *App) handleSensors(w http.ResponseWriter, r *http.Request, m *Monitor) 
 	case "disable":
 		script = sensorsDisableScript
 	default:
-		writeErr(w, 400, "неизвестное действие")
+		writeErr(w, 400, L("неизвестное действие"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	in := m.ensureInfo(ctx)
 	if in == nil {
-		writeErr(w, 502, "сервер недоступен")
+		writeErr(w, 502, L("сервер недоступен"))
 		return
 	}
 	if in.UID != 0 && !in.Sudo {
-		writeErr(w, 403, "нужен root или sudo без пароля")
+		writeErr(w, 403, L("нужен root или sudo без пароля"))
 		return
 	}
 	srv := m.server()
@@ -552,6 +552,6 @@ func (a *App) handleSensors(w http.ResponseWriter, r *http.Request, m *Monitor) 
 		if msg == "" {
 			msg = res.errText()
 		}
-		writeErr(w, 500, "не получилось: "+lastLines(msg, 4))
+		writeErr(w, 500, L("не получилось: ")+lastLines(msg, 4))
 	}
 }

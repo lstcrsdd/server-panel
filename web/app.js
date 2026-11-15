@@ -2,7 +2,7 @@
 
 const TOKEN = document.querySelector('meta[name="panel-token"]').content;
 const RANGES = { '5m': 5 * 60e3, '15m': 15 * 60e3, '1h': 3600e3, '6h': 6 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, '30d': 30 * 86400e3 };
-const RANGE_LABELS = [['5m', '5 мин'], ['15m', '15 мин'], ['1h', '1 час'], ['6h', '6 часов'], ['24h', '24 часа'], ['7d', '7 дней'], ['30d', '30 дней']];
+const RANGE_LABELS = [['5m', L('5 мин')], ['15m', L('15 мин')], ['1h', L('1 час')], ['6h', L('6 часов')], ['24h', L('24 часа')], ['7d', L('7 дней')], ['30d', L('30 дней')]];
 const SPARK_N = 150;
 const NB = ' ';
 // служба с ошибкой: упала или падает и перезапускается по кругу (Restart=…, «activating (auto-restart)»)
@@ -54,6 +54,12 @@ const ICONS = {
   bell: '<path d="M5.5 13.5V9a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5h-12z"/><path d="M8.5 17.2a1.6 1.6 0 0 0 3 0"/>',
   send: '<path d="M17 3.5L2.8 9.3l5.6 2.3 2.3 5.6z"/><path d="M8.4 11.6L17 3.5"/>',
   check: '<path d="M5 10.5l3.2 3.2L15 6.8"/>',
+  ok: '<circle cx="10" cy="10" r="6.5"/><path d="M7.2 10.2l2 2 3.8-4.2"/>',
+  cross: '<circle cx="10" cy="10" r="6.5"/><path d="M7.6 7.6l4.8 4.8M12.4 7.6l-4.8 4.8"/>',
+  pause: '<circle cx="10" cy="10" r="6.5"/><path d="M8.4 7.6v4.8M11.6 7.6v4.8"/>',
+  search: '<circle cx="9" cy="9" r="5"/><path d="M13 13l3.5 3.5"/>',
+  chev: '<path d="M7.5 5l5 5-5 5"/>',
+  star: '<path d="M10 3.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7L10 14l-4.2 2.2.8-4.7-3.4-3.3 4.7-.7z"/>',
 };
 function icon(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -72,16 +78,16 @@ async function api(path, opts = {}) {
   try {
     res = await fetch('/api' + path, { method: opts.method || 'GET', headers, body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined });
   } catch (e) {
-    throw new Error('Нет связи с панелью — она запущена?');
+    throw new Error(L('Нет связи с панелью — она запущена?'));
   }
   if (res.status === 401) {
     showRestartBanner();
-    throw new Error('Панель была перезапущена — обновите страницу');
+    throw new Error(L('Панель была перезапущена — обновите страницу'));
   }
   let data = {};
   try { data = await res.json(); } catch (e) { /* пустой ответ */ }
   if (!res.ok) {
-    const err = new Error(data.error || 'Ошибка ' + res.status);
+    const err = new Error(data.error || L('Ошибка ') + res.status);
     err.data = data;
     throw err;
   }
@@ -137,7 +143,7 @@ function promptDialog({ title, label, value = '', ok = 'OK', hint, validate }) {
     const m = modal({
       title,
       body: h('div', { class: 'form' }, h('label', { class: 'field' }, h('span', null, label), input, hint ? h('span', { class: 'hint' }, hint) : null), err),
-      foot: [h('button', { class: 'btn', type: 'button', onclick: () => finish(null) }, 'Отмена'),
+      foot: [h('button', { class: 'btn', type: 'button', onclick: () => finish(null) }, L('Отмена')),
         h('button', { class: 'btn primary', type: 'button', onclick: () => finish(input.value.trim()) }, ok)],
       onClose: () => { if (!done) { done = true; resolve(null); } },
     });
@@ -145,7 +151,7 @@ function promptDialog({ title, label, value = '', ok = 'OK', hint, validate }) {
   });
 }
 
-function confirmDialog({ title, text, warn, ok = 'Подтвердить', danger = false }) {
+function confirmDialog({ title, text, warn, ok = L('Подтвердить'), danger = false }) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } m.close(); };
@@ -155,7 +161,7 @@ function confirmDialog({ title, text, warn, ok = 'Подтвердить', dange
       body: h('div', { class: 'form' },
         text ? h('div', { class: 'ink2' }, text) : null,
         warn ? h('div', { class: 'alert warn' }, icon('warn'), h('div', null, warn)) : null),
-      foot: [h('button', { class: 'btn', type: 'button', onclick: () => finish(false) }, 'Отмена'), okBtn],
+      foot: [h('button', { class: 'btn', type: 'button', onclick: () => finish(false) }, L('Отмена')), okBtn],
       onClose: () => { if (!done) { done = true; resolve(false); } },
     });
     setTimeout(() => okBtn.focus(), 40);
@@ -191,20 +197,59 @@ function popMenu(anchor, items) {
 }
 
 function copyText(text) {
-  navigator.clipboard.writeText(text).then(() => toast('Скопировано'), () => toast('Не удалось скопировать', 'bad'));
+  navigator.clipboard.writeText(text).then(() => toast(L('Скопировано')), () => toast(L('Не удалось скопировать'), 'bad'));
 }
 
 let bannerShown = false;
 function showRestartBanner() {
   if (bannerShown) return;
   bannerShown = true;
-  const b = h('div', { class: 'banner' }, 'Панель была перезапущена — страницу нужно обновить.',
-    h('button', { class: 'btn sm', type: 'button', onclick: () => location.reload() }, 'Обновить'));
+  const b = h('div', { class: 'banner' }, L('Панель была перезапущена — страницу нужно обновить.'),
+    h('button', { class: 'btn sm', type: 'button', onclick: () => location.reload() }, L('Обновить')));
   $('#main').prepend(b);
 }
 
 /* ---------- общие элементы ---------- */
-const STATUS_TEXT = { online: 'онлайн', connecting: 'подключение…', offline: 'нет связи', off: 'мониторинг выключен' };
+const STATUS_TEXT = { online: L('онлайн'), connecting: L('подключение…'), offline: L('нет связи'), off: L('мониторинг выключен') };
+
+// Состояние сервера одним словом и его причины: связь, активные оповещения, службы с ошибкой.
+// level: ok | warn | down | wait (подключение) | off (мониторинг выключен)
+const LEVEL_RANK = { down: 0, warn: 1, wait: 2, ok: 3, off: 4 };
+const LEVEL_TEXT = { ok: L('в норме'), warn: L('внимание'), down: L('нет связи'), wait: L('подключение'), off: L('выключен') };
+const LEVEL_ICON = { ok: 'ok', warn: 'warn', down: 'cross', wait: 'clock', off: 'pause' };
+function srvState(s) {
+  if (s.status === 'off') return { level: 'off', why: [], since: 0 };
+  if (s.status !== 'online' && s.status !== 'offline') return { level: 'wait', why: [], since: 0 };
+  const fires = S.firing.filter((f) => f.server === s.id);
+  if (s.status === 'offline') {
+    const f = fires.find((x) => x.kind === 'offline');
+    return { level: 'down', why: [s.error || L('нет связи')], since: (f && f.since) || s.since || 0 };
+  }
+  const why = fires.map((f) => f.text);
+  for (const u of s.units || []) {
+    if (unitBad(u) && !fires.some((f) => f.subject === u.unit)) why.push(L('служба {0}: ошибка', u.unit.replace(/\.service$/, '')));
+  }
+  return { level: why.length ? 'warn' : 'ok', why, since: fires.length ? Math.min(...fires.map((f) => f.since)) : 0 };
+}
+// «13 ч», «3 д» — сколько длится состояние
+function sinceShort(ms) {
+  if (!ms) return '';
+  const sec = Math.max(0, (Date.now() - ms) / 1000);
+  if (sec < 90) return L('только что');
+  if (sec < 5400) return L('{0}{1}мин', Math.round(sec / 60), NB);
+  if (sec < 172800) return L('{0}{1}ч', Math.round(sec / 3600), NB);
+  return L('{0}{1}д', Math.round(sec / 86400), NB);
+}
+function sortIcon(asc) {
+  const i = icon(asc ? 'up' : 'down');
+  i.classList.add('arrow');
+  return i;
+}
+function levelBadge(st) {
+  const sm = sinceShort(st.since);
+  return h('span', { class: 'lvl lvl-' + st.level }, icon(LEVEL_ICON[st.level]), h('span', { class: 'lvl-t' }, LEVEL_TEXT[st.level]),
+    sm && st.level !== 'ok' ? h('small', null, sm) : null);
+}
 
 function statusChip(srv) {
   return h('span', { class: 'st' }, h('span', { class: 'dot ' + srv.status }), STATUS_TEXT[srv.status] || srv.status);
@@ -269,6 +314,7 @@ const S = {
   notes: [],
   scenarios: [],
   scnRuns: [],
+  avail: { start: 0, slot: 1800, rows: {} },
 };
 
 function ingestServers(list) {
@@ -295,6 +341,8 @@ function connect() {
     S.setup = d.setup || null;
     S.notes = d.notes || [];
     S.scenarios = d.scenarios || [];
+    if (d.avail) S.avail = d.avail;
+    if (d.lang && d.lang !== I18N.lang) syncLang(I18N.lang);
     updateAlertBadge();
     setConn(true);
     renderSidebar();
@@ -341,10 +389,15 @@ function connect() {
     s.units = d.units;
     if (S.page && S.page.onUnits) S.page.onUnits(s);
   });
+  es.addEventListener('avail', (e) => {
+    S.avail = JSON.parse(e.data);
+    if (S.page && S.page.onAvail) S.page.onAvail();
+  });
   es.addEventListener('alerts', (e) => {
     const d = JSON.parse(e.data);
     S.firing = d.firing || [];
     updateAlertBadge();
+    for (const x of S.servers) updateSideRow(x);
     const ev = d.event;
     if (ev && ev.state === 'fire' && !S.seenEvents.has(ev.id)) {
       S.seenEvents.add(ev.id);
@@ -365,7 +418,7 @@ function connect() {
 function setConn(ok) {
   const c = $('#conn');
   c.className = 'conn ' + (ok ? 'ok' : 'bad');
-  c.title = ok ? 'Связь с панелью есть' : 'Нет связи с панелью';
+  c.title = ok ? L('Связь с панелью есть') : L('Нет связи с панелью');
 }
 
 /* ---------- боковая панель ---------- */
@@ -378,11 +431,16 @@ function renderSidebar() {
   const visible = S.servers.filter((s) => !s.hidden);
   const groups = groupServers(visible);
   const titled = groups.some(([g]) => g);
-  for (const [g, items] of groups) {
-    if (titled) list.append(h('div', { class: 'srv-group' }, g || 'Без группы'));
+  const flt = $('#srv-filter');
+  flt.hidden = visible.length <= 12;
+  const q = flt.hidden ? '' : flt.value.trim().toLowerCase();
+  for (const [g, all] of groups) {
+    const items = q ? all.filter((x) => x.name.toLowerCase().includes(q)) : all;
+    if (!items.length) continue;
+    if (titled) list.append(h('div', { class: 'srv-group' }, g || L('Без группы')));
     for (const s of items) renderSideRow(list, s);
   }
-  if (!visible.length) list.append(h('div', { class: 'muted', style: { padding: '8px 10px', fontSize: '13px' } }, 'Серверов пока нет'));
+  if (!visible.length) list.append(h('div', { class: 'muted', style: { padding: '8px 10px', fontSize: '13px' } }, L('Серверов пока нет')));
   const online = S.servers.filter((s) => s.status === 'online').length;
   $('#fleet-count').textContent = `${online}/${visible.length}`;
   highlightSidebar();
@@ -392,26 +450,21 @@ function renderSideRow(list, s) {
   const dot = h('span', { class: 'dot ' + s.status });
   const name = h('span', { class: 'srv-name' }, s.name);
   const val = h('span', { class: 'srv-val' });
-  const cv = h('canvas', { 'aria-hidden': 'true' });
-  const why = h('span', { class: 'why' });
-  const sub = h('div', { class: 'srv-sub' }, cv, why);
-  const row = h('a', { class: 'srv', href: '#/s/' + encodeURIComponent(s.id), title: s.name }, dot, name, val, sub);
+  const row = h('a', { class: 'srv', href: '#/s/' + encodeURIComponent(s.id) }, dot, name, val);
   list.append(row);
-  sideRows.set(s.id, { row, dot, val, cv, why });
+  sideRows.set(s.id, { row, dot, val });
   updateSideRow(s);
 }
 
 function updateSideRow(s) {
   const r = sideRows.get(s.id);
   if (!r) return;
-  r.dot.className = 'dot ' + s.status;
+  const st = srvState(s);
+  r.dot.className = 'dot ' + (st.level === 'warn' ? 'warn' : s.status);
   r.row.classList.toggle('dim', s.status === 'off');
   const online = s.status === 'online' && s.latest;
-  r.val.textContent = online ? Fmt.pct0(s.latest.cpu) : s.status === 'off' ? 'выкл.' : s.status === 'connecting' ? '…' : 'офлайн';
-  r.cv.hidden = !online;
-  r.why.hidden = !!online;
-  r.why.textContent = online ? '' : s.status === 'offline' ? (s.error || 'нет связи') : s.status === 'off' ? 'мониторинг выключен' : 'подключение…';
-  if (online) drawSpark(r.cv, s.spark.map((p) => p.c), { max: 100, slots: SPARK_N, baseline: false });
+  r.val.textContent = online ? Fmt.pct0(s.latest.cpu) : s.status === 'off' ? L('выкл.') : s.status === 'connecting' ? '…' : L('нет связи');
+  r.row.title = [s.name, LEVEL_TEXT[st.level], ...st.why].join('\n');
   const visible = S.servers.filter((x) => !x.hidden);
   $('#fleet-count').textContent = `${visible.filter((x) => x.status === 'online').length}/${visible.length}`;
 }
@@ -439,6 +492,9 @@ function highlightSidebar() {
     if (ar.left < nr.left || ar.right > nr.right) nav.scrollLeft += ar.left - nr.left - 16;
   }
   for (const [id, row] of sideRows) row.row.classList.toggle('active', r.view === 'server' && r.id === id);
+  // «Сервер» — главное действие только там, где работают со списком серверов
+  const add = $('#btn-add');
+  if (add) add.classList.toggle('primary', r.view === 'fleet' || r.view === 'manage');
 }
 
 /* ---------- маршруты ---------- */
@@ -446,6 +502,7 @@ function parseRoute() {
   const m = location.hash.match(/^#\/s\/([^/]+)(?:\/([a-z]+))?/);
   if (m) return { view: 'server', id: decodeURIComponent(m[1]), tab: m[2] || 'overview' };
   const v = (location.hash.match(/^#\/([a-z]+)/) || [])[1];
+  if (v === 'scenarios') return { view: 'commands' };
   if (v && PAGES[v]) return { view: v };
   return { view: 'fleet' };
 }
@@ -454,6 +511,7 @@ function route(dataChanged) {
   const r = parseRoute();
   const main = $('#main');
   const p = S.page;
+  if (!dataChanged) stripTip.hide(); // подсказка полоски не должна пережить переход
   if (r.view === 'server' && !S.by.has(r.id)) {
     if (S.servers.length) { location.hash = '#/'; return; }
   }
@@ -466,197 +524,347 @@ function route(dataChanged) {
     if (p && p.destroy) p.destroy();
     S.page = r.view === 'server' ? new ServerPage(r.id, r.tab) : new (PAGES[r.view] || FleetPage)();
     main.replaceChildren(S.page.el);
-    main.scrollTop = 0;
+    $('#scroll').scrollTop = 0;
   }
   highlightSidebar();
 }
 
-/* ---------- сводка по всем серверам ---------- */
+/* ---------- главный экран: табло ---------- */
+const AVAIL_TEXT = { 0: L('нет данных'), 1: L('в норме'), 2: L('внимание'), 3: L('нет связи') };
+// [ключ, подпись, числовая, короткая подпись для телефона]
+const FLEET_COLS = [
+  ['state', L('Состояние')], ['name', L('Сервер')], ['avail', L('Доступность за сутки')],
+  ['cpu', L('Процессор'), 1, L('ЦП')], ['mem', L('Память'), 1, L('ОЗУ')], ['disk', L('Диск'), 1], ['net', L('Сеть'), 1], ['uptime', L('Работает'), 1],
+];
+// Узкий экран теряет колонки целиком. Решает JS, а не display: none в CSS:
+// при table-layout: fixed скрытая ячейка оставляет пустую колонку, которая
+// отнимает место у имени.
+// Пороги подобраны так, чтобы имени сервера оставалось не меньше ~180 px.
+const FLEET_DROP = [['net', '(max-width: 1360px)'], ['uptime', '(max-width: 1180px)'], ['avail', '(max-width: 1100px)']];
+const PHONE = '(max-width: 700px)';
+
+// Полоска доступности: 48 получасовых делений, новые справа. Один элемент с
+// градиентом вместо 48 узлов на строку — табло с сотнями серверов
+// перерисовывается без задержки. Подсказку по делению рисует stripTip.
+const AVAIL_FILL = { 0: 'var(--slot-nd)', 1: 'var(--slot)', 2: 'var(--warning)', 3: 'var(--critical)' };
+// процент — доля времени на связи; предупреждения видны цветом делений
+function availStats(id) {
+  const row = (S.avail.rows || {})[id] || '';
+  let known = 0, up = 0;
+  for (const c of row) if (c !== '0') { known++; if (c !== '3') up++; }
+  return { row, known, pct: known ? up / known * 100 : -1 };
+}
+function availPct(v) { return v >= 99.95 ? '100' + NB + '%' : Fmt.pct(Math.min(v, 99.9)); }
+function availStrip(id, compact) {
+  const { row, known, pct } = availStats(id);
+  const w = compact ? 1.5 : 2.5, step = w + 1;
+  const el = h('span', { class: 'strip' + (compact ? ' compact' : ''), role: 'img' });
+  if (!row) { el.classList.add('none'); el.setAttribute('aria-label', L('Данных о доступности пока нет')); return el; }
+  const stops = [];
+  for (let i = 0; i < row.length; i++) {
+    const x = i * step;
+    stops.push(`${AVAIL_FILL[row[i]] || AVAIL_FILL[0]} ${x}px ${x + w}px`, `transparent ${x + w}px ${x + step}px`);
+  }
+  el.style.width = row.length * step - 1 + 'px';
+  el.style.backgroundImage = `linear-gradient(90deg, ${stops.join(', ')})`;
+  el.dataset.id = id;
+  el.dataset.step = String(step);
+  el.setAttribute('aria-label', known ? L('За сутки на связи {0} времени наблюдения', availPct(pct)) : L('Данных о доступности пока нет'));
+  return el;
+}
+
+// подсказка «14:00–14:30 · в норме» над делением под курсором или пальцем
+const stripTip = (() => {
+  let tip = null, cur = null;
+  const hide = () => { if (cur) cur.classList.remove('hov'); cur = null; if (tip) tip.hidden = true; };
+  // строку перерисовали — полоски под курсором больше нет в документе
+  setInterval(() => { if (cur && !cur.isConnected) hide(); }, 500);
+  const show = (e) => {
+    const el = e.target.closest && e.target.closest('.strip[data-id]');
+    if (!el) { hide(); return; }
+    const row = (S.avail.rows || {})[el.dataset.id] || '';
+    const step = +el.dataset.step || 3.5, r = el.getBoundingClientRect();
+    const i = Math.max(0, Math.min(row.length - 1, Math.floor((e.clientX - r.left) / step)));
+    if (!row) { hide(); return; }
+    const slot = (S.avail.slot || 1800) * 1000, end = (S.avail.start || 0) * 1000 + slot, t0 = end - (row.length - i) * slot;
+    const hm = (ms) => new Date(ms).toLocaleTimeString(I18N.locale, { hour: '2-digit', minute: '2-digit' });
+    if (!tip) { tip = h('div', { class: 'strip-tip', role: 'tooltip' }); document.body.append(tip); }
+    if (cur && cur !== el) cur.classList.remove('hov');
+    cur = el;
+    el.classList.add('hov');
+    el.style.setProperty('--hx', i * step + 'px');
+    tip.textContent = `${hm(t0)}–${hm(t0 + slot)} · ${AVAIL_TEXT[row[i]] || AVAIL_TEXT[0]}`;
+    tip.hidden = false;
+    const x = r.left + i * step, tw = tip.offsetWidth;
+    tip.style.left = Math.max(8, Math.min(x - tw / 2, window.innerWidth - tw - 8)) + 'px';
+    tip.style.top = r.top - tip.offsetHeight - 6 + 'px';
+  };
+  document.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') show(e); });
+  document.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') show(e); });
+  document.addEventListener('scroll', hide, true);
+  return { hide };
+})();
+
 class FleetPage {
   constructor() {
     this.kind = 'fleet';
-    this.el = h('div', { class: 'page' });
-    this.cards = new Map();
+    this.el = h('div', { class: 'page fleet-page' });
+    this.rows = new Map();
+    this.flt = store.get('fleetFilter', 'all');
+    this.grp = store.get('fleetGroup', '');
+    this.sort = store.get('fleetSort', { key: 'state', dir: 1 });
+    this.closed = new Set(store.get('fleetClosed', []));
+    this.q = '';
+    this.sumEl = h('p', { class: 'fleet-sum', 'aria-live': 'polite' });
+    this.toolsEl = h('div', { class: 'fleet-tools' });
+    this.bodyEl = h('div');
+    this.el.append(
+      h('div', { class: 'page-head' }, h('div', { class: 'head-main' }, h('h1', null, L('Все серверы')), this.sumEl), this.toolsEl),
+      this.bodyEl);
+    this.tick = setInterval(() => this.render(), 60e3); // «13 ч» и полоска стареют сами
+    this.mq = [...FLEET_DROP.map(([, q]) => q), PHONE].map((q) => { const m = matchMedia(q), f = () => this.render(); m.addEventListener('change', f); return [m, f]; });
     this.render();
   }
 
+  cols() { return FLEET_COLS.filter(([k]) => !FLEET_DROP.some(([c, q]) => c === k && matchMedia(q).matches)); }
+
   onData() { this.render(); }
   onNotes() { this.render(); }
+  onSetup() { if (!S.servers.some((s) => !s.hidden) || this.onboarding) this.render(); }
+  onUnits() { this.renderSoon(); }
+  onStatus() { this.renderSoon(); }
+  onAlerts() { this.renderSoon(); }
+  onAvail() { this.renderSoon(); }
+  onFrame(srv) { this.updateRow(srv); this.sumSoon(); }
+  destroy() { clearInterval(this.tick); clearTimeout(this.rT); clearTimeout(this.sT); for (const [m, f] of this.mq) m.removeEventListener('change', f); }
 
-  onSetup() {
-    const want = !S.servers.some((s) => !s.hidden);
-    if (want || this.onboarding) this.render();
+  renderSoon() { if (!this.rT) this.rT = setTimeout(() => { this.rT = 0; this.render(); }, 150); }
+  sumSoon() { if (!this.sT) this.sT = setTimeout(() => { this.sT = 0; this.updateSum(); }, 1000); }
+
+  visible() { return S.servers.filter((s) => !s.hidden); }
+
+  metric(s, key) {
+    const m = s.status === 'online' && s.latest;
+    if (!m) return -1;
+    if (key === 'cpu') return m.cpu;
+    if (key === 'mem') return memPct(m);
+    if (key === 'disk') { const f = dataFS(m).length > 1 ? fullestFS(m) : rootFS(m); return f ? f.pct : -1; }
+    if (key === 'net') return m.netRx + m.netTx;
+    if (key === 'uptime') return m.uptime || 0;
+    if (key === 'avail') return availStats(s.id).pct;
+    return 0;
   }
 
-  onUnits(srv) {
-    const ref = this.cards.get(srv.id);
-    if (ref) this.replaceCard(srv);
-    this.updateSummary();
+  sorted(list) {
+    const { key, dir } = this.sort;
+    const byName = (a, b) => a.name.localeCompare(b.name, I18N.locale, { numeric: true });
+    return list.slice().sort((a, b) => {
+      if (key === 'state') return (LEVEL_RANK[a._st.level] - LEVEL_RANK[b._st.level]) * dir || byName(a, b);
+      if (key === 'name') return byName(a, b) * dir;
+      // числовые колонки: по умолчанию большие значения наверху; серверы без данных — в конце
+      const x = this.metric(a, key), y = this.metric(b, key);
+      if ((x < 0) !== (y < 0)) return x < 0 ? 1 : -1;
+      if (key === 'avail') return (x - y) * dir || byName(a, b); // по умолчанию сверху худшие
+      return (y - x) * dir || byName(a, b);
+    });
+  }
+
+  setSort(key) {
+    this.sort = this.sort.key === key ? { key, dir: -this.sort.dir } : { key, dir: 1 };
+    store.set('fleetSort', this.sort);
+    this.render();
   }
 
   render() {
-    const vis = S.servers.filter((s) => !s.hidden);
+    const vis = this.visible();
     const hidden = S.servers.filter((s) => s.hidden);
-    this.cards.clear();
-    this.sum = {
-      online: h('div', { class: 'kpi-value' }), onlineSub: h('div', { class: 'kpi-sub' }),
-      cpu: h('div', { class: 'kpi-value' }), cpuSub: h('div', { class: 'kpi-sub' }),
-      net: h('div', { class: 'kpi-value' }), netSub: h('div', { class: 'kpi-sub' }),
-      warn: h('div', { class: 'kpi-value' }), warnSub: h('div', { class: 'kpi-sub' }),
-    };
-    const s = this.sum;
-    const groups = groupServers(vis);
-    const titled = groups.some(([g]) => g);
-    const grid = h('div');
-    for (const [g, items] of groups) {
-      if (titled) grid.append(h('div', { class: 'section-title' }, g || 'Без группы'));
-      grid.append(h('div', { class: 'fleet' }, items.map((srv) => this.card(srv))));
-    }
+    for (const s of vis) s._st = srvState(s);
     this.onboarding = !vis.length;
+    this.renderTools(vis);
+    this.updateSum();
+    this.rows.clear();
+    if (!vis.length) { this.bodyEl.replaceChildren(onboardingCard(), this.hiddenBlock(hidden)); return; }
 
-    this.el.replaceChildren(
-      h('div', { class: 'page-head' },
-        h('div', { class: 'head-main' },
-          h('h1', null, 'Все серверы'),
-          h('div', { class: 'head-meta' }, h('span', null, 'Мониторинг и управление по SSH — на серверы ничего не устанавливается'))),
-        h('div', { class: 'head-actions' },
-          h('a', { class: 'btn', href: '#/manage' }, 'Управление'),
-          h('button', { class: 'btn primary', type: 'button', onclick: () => addServerDialog() }, icon('plus'), 'Добавить сервер'))),
-      h('div', { class: 'summary' },
-        h('div', { class: 'card kpi' }, h('div', { class: 'kpi-label' }, 'На связи'), s.online, s.onlineSub),
-        h('div', { class: 'card kpi' }, h('div', { class: 'kpi-label' }, 'Средняя загрузка CPU'), s.cpu, s.cpuSub),
-        h('div', { class: 'card kpi' }, h('div', { class: 'kpi-label' }, 'Трафик сейчас, входящий'), s.net, s.netSub),
-        h('div', { class: 'card kpi' }, h('div', { class: 'kpi-label' }, 'Требуют внимания'), s.warn, s.warnSub)),
-      vis.length ? grid : onboardingCard(),
-      hidden.length ? h('div', null,
-        h('div', { class: 'section-title' }, `Скрытые (${hidden.length})`),
-        h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('tbody', null, hidden.map((x) => h('tr', null,
-          h('td', null, h('b', null, x.name)), h('td', { class: 'muted' }, (x.user ? x.user + '@' : '') + x.host),
-          h('td', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', onclick: () => patchServer(x.id, { hidden: false, monitor: true }) }, 'Показать')))))))) : '',
-    );
-    this.updateSummary();
-  }
-
-  card(srv) {
-    const live = srv.status === 'online' && srv.latest;
-    const info = srv.info || {};
-    const meta = [srv.user ? `${srv.user}@${srv.host}` : srv.host, info.os, info.cores ? `${info.cores}${NB}ядер` : null].filter(Boolean).join(' · ');
-    const el = h('div', { class: 'card fcard' + (srv.status === 'off' ? ' off-card' : ''), tabindex: '0', role: 'link', 'aria-label': srv.name });
-    const open = () => { location.hash = '#/s/' + encodeURIComponent(srv.id); };
-    el.addEventListener('click', (e) => { if (!e.target.closest('button')) open(); });
-    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
-    const head = h('div', { class: 'fcard-head' }, h('span', { class: 'fcard-name' }, srv.name), noteBadge(srv.id), statusChip(srv));
-    el.append(head, h('div', { class: 'fcard-meta', title: meta }, meta));
-    const ref = { el, srv };
-    if (live || srv.status === 'connecting' && srv.latest) {
-      const mk = (label) => { const m = meter(0); const v = h('span', { class: 'fm-v' }); const l = h('span', { class: 'fm-l' }, label); return { row: h('div', { class: 'fm' }, l, m.el, v), m, v, l }; };
-      ref.cpu = mk('CPU'); ref.mem = mk('Память'); ref.disk = mk('Диск /');
-      ref.net = h('div', { class: 'fnet' });
-      ref.cv = h('canvas', { 'aria-hidden': 'true' });
-      el.append(h('div', { class: 'fmeters' }, ref.cpu.row, ref.mem.row, ref.disk.row), ref.net, ref.cv);
-      const failed = (srv.units || []).filter(unitBad);
-      if (failed.length) {
-        el.append(h('div', { class: 'fwarn', title: failed.map((u) => u.unit).join('\n') }, icon('warn'),
-          `${failed.length === 1 ? 'служба с ошибкой' : 'службы с ошибкой'}: ${failed.map((u) => u.unit.replace(/\.service$/, '')).join(', ')}`));
-      }
-      this.updateCard(ref);
-    } else if (srv.status === 'off') {
-      el.append(h('div', { class: 'err' }, 'Метрики не собираются.'),
-        h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: () => patchServer(srv.id, { monitor: true }) }, 'Включить мониторинг')));
-    } else if (srv.status === 'offline') {
-      el.append(h('div', { class: 'err' }, srv.error || 'Нет связи'),
-        h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: () => reconnect(srv.id) }, icon('refresh'), 'Переподключить')));
-    } else {
-      el.append(h('div', { class: 'err' }, h('span', { class: 'spinner' }), NB + ' Подключение…'));
+    const q = this.q.trim().toLowerCase();
+    let list = vis;
+    if (this.flt === 'bad') list = list.filter((s) => s._st.level === 'down' || s._st.level === 'warn');
+    else if (this.flt === 'down') list = list.filter((s) => s._st.level === 'down');
+    if (this.grp) list = list.filter((s) => (s.group || '') === (this.grp === '\u0000' ? '' : this.grp));
+    if (q) list = list.filter((s) => [s.name, s.host, s.group, s.info && s.info.os].some((v) => v && String(v).toLowerCase().includes(q)));
+    if (!list.length) {
+      this.bodyEl.replaceChildren(h('div', { class: 'card empty' }, h('b', null, L('Под этот фильтр ничего не подошло')),
+        h('div', { style: { marginTop: '12px' } }, h('button', { class: 'btn', type: 'button', onclick: () => this.resetFilters() }, L('Сбросить фильтр')))),
+      this.hiddenBlock(hidden));
+      return;
     }
-    this.cards.set(srv.id, ref);
-    return el;
-  }
 
-  updateCard(ref) {
-    const s = S.by.get(ref.srv.id);
-    const m = s && s.latest;
-    if (!m || !ref.cpu) return;
-    ref.cpu.m.set(m.cpu); ref.cpu.v.textContent = Fmt.pct0(m.cpu);
-    const mp = memPct(m);
-    ref.mem.m.set(mp); ref.mem.v.textContent = Fmt.pct0(mp);
-    const parts = dataFS(m);
-    const fs = parts.length > 1 ? fullestFS(m) : rootFS(m);
-    ref.disk.l.textContent = parts.length > 1 ? 'Диски' : 'Диск ' + (fs ? fs.mount : '/');
-    ref.disk.row.title = parts.map((f) => `${f.mount}: ${Fmt.pct0(f.pct)} · ${Fmt.bytes(f.used)} из ${Fmt.bytes(f.size)}`).join('\n');
-    ref.disk.m.set(fs ? fs.pct : 0); ref.disk.v.textContent = fs ? Fmt.pct0(fs.pct) : '—';
-    const tc = tempMain(m.temps, 'cpu');
-    ref.net.replaceChildren(
-      h('span', null, '↓ ', h('b', null, Fmt.bits(m.netRx * 8))),
-      h('span', null, '↑ ', h('b', null, Fmt.bits(m.netTx * 8))),
-      h('span', null, 'TCP ', h('b', null, Fmt.int(m.tcp))),
-      tc ? h('span', { title: 'Температура процессора' }, 'CPU ', h('b', null, tFmt(tc.c))) : '',
-      h('span', null, 'аптайм ', h('b', null, Fmt.dur(m.uptime))));
-    drawSpark(ref.cv, s.spark.map((p) => p.c), { max: 100, slots: SPARK_N });
-  }
-
-  updateSummary() {
-    const vis = S.servers.filter((s) => !s.hidden);
-    const on = vis.filter((s) => s.status === 'online' && s.latest);
-    const s = this.sum;
-    s.online.replaceChildren(String(on.length), h('small', null, ` из ${vis.length}`));
-    const off = vis.filter((x) => x.status === 'offline');
-    s.onlineSub.textContent = off.length ? 'нет связи: ' + off.map((x) => x.name).join(', ') : 'все серверы отвечают';
-    const avg = on.length ? on.reduce((a, x) => a + x.latest.cpu, 0) / on.length : 0;
-    s.cpu.textContent = on.length ? Fmt.pct(avg) : '—';
-    const top = on.slice().sort((a, b) => b.latest.cpu - a.latest.cpu)[0];
-    s.cpuSub.textContent = top ? `больше всего: ${top.name} (${Fmt.pct0(top.latest.cpu)})` : NB;
-    const rx = on.reduce((a, x) => a + x.latest.netRx, 0), tx = on.reduce((a, x) => a + x.latest.netTx, 0);
-    s.net.textContent = Fmt.bits(rx * 8);
-    s.netSub.textContent = 'исходящий ' + Fmt.bits(tx * 8);
-    const issues = [];
-    for (const x of vis) {
-      if (x.status === 'offline') { issues.push(`${x.name}: нет связи`); continue; }
-      const m = x.latest;
-      if (!m) continue;
-      if (m.cpu >= 90) issues.push(`${x.name}: CPU ${Fmt.pct0(m.cpu)}`);
-      if (memPct(m) >= 90) issues.push(`${x.name}: память ${Fmt.pct0(memPct(m))}`);
-      for (const f of m.fs || []) if (f.pct >= 90) issues.push(`${x.name}: диск ${f.mount} ${Fmt.pct0(f.pct)}`);
-      for (const u of x.units || []) if (unitBad(u)) issues.push(`${x.name}: ${u.unit.replace(/\.service$/, '')} — ошибка`);
+    const tbody = h('tbody');
+    const cols = this.cols();
+    this.shown = new Set(cols.map(([k]) => k));
+    const groups = groupServers(list);
+    const titled = groups.some(([g]) => g);
+    const section = (key, title, note, items) => {
+      const open = !this.closed.has(key);
+      const btn = h('button', { class: 'grp-btn', type: 'button', 'aria-expanded': String(open), onclick: () => {
+        if (this.closed.has(key)) this.closed.delete(key); else this.closed.add(key);
+        store.set('fleetClosed', [...this.closed]); this.render();
+      } }, icon('chev'), h('span', null, title), h('i', null, note));
+      tbody.append(h('tr', { class: 'grp' }, h('th', { colspan: String(cols.length), scope: 'rowgroup' }, btn)));
+      if (open) for (const s of items) tbody.append(this.row(s));
+    };
+    const bySt = this.sort.key === 'state' && this.sort.dir === 1;
+    const bad = bySt ? list.filter((s) => s._st.level === 'down' || s._st.level === 'warn') : [];
+    if (bad.length) section('!', L('Требуют внимания'), String(bad.length), this.sorted(bad));
+    for (const [g, all] of groups) {
+      const items = this.sorted(bad.length ? all.filter((s) => !bad.includes(s)) : all);
+      const okN = all.filter((s) => s._st.level === 'ok').length;
+      const note = okN === all.length ? L('{0} · все в норме', all.length) : L('в норме {0} из {1}', okN, all.length);
+      if (titled || bad.length) { if (items.length || titled) section('g:' + g, g || (titled ? L('Без группы') : L('Остальные')), note, items); }
+      else for (const s of items) tbody.append(this.row(s));
     }
-    s.warn.textContent = String(issues.length);
-    s.warnSub.textContent = issues.length ? issues.join(' · ') : 'всё в порядке';
-    s.warnSub.title = issues.join('\n');
+
+    // dir 1 — порядок колонки по умолчанию: имя и состояние по возрастанию (А→Я,
+    // сначала худшие), числа по убыванию (самые нагруженные наверху)
+    const asc = (k) => ((k === 'name' || k === 'state') ? this.sort.dir === 1 : this.sort.dir === -1);
+    const arrow = (k) => (this.sort.key === k ? sortIcon(asc(k)) : null);
+    const head = h('tr', null, cols.map(([k, label, num, short]) => h('th', {
+      class: 'c-' + k + (num ? ' num' : ''), scope: 'col',
+      'aria-sort': this.sort.key === k ? (asc(k) ? 'ascending' : 'descending') : null,
+    }, h('button', { class: 'th-btn', type: 'button', onclick: () => this.setSort(k), 'aria-label': label },
+      short ? [h('span', { class: 'th-full' }, label), h('span', { class: 'th-short' }, short)] : label, arrow(k)))));
+    const tbl = h('table', { class: 'board' + (this.shown.has('avail') ? '' : ' stacked') }, h('caption', { class: 'vh' }, L('Серверы: состояние, доступность за сутки и нагрузка')), h('thead', null, head), tbody);
+    tbl.addEventListener('keydown', (e) => this.rowKeys(e));
+    this.bodyEl.replaceChildren(h('div', { class: 'board-wrap' }, tbl), this.hiddenBlock(hidden));
   }
 
-  onFrame(srv) {
-    const ref = this.cards.get(srv.id);
-    if (ref && ref.cpu) this.updateCard(ref);
-    else if (ref) this.replaceCard(srv);
-    this.updateSummaryThrottled();
+  row(s) {
+    const st = s._st;
+    const href = '#/s/' + encodeURIComponent(s.id);
+    const info = s.info || {};
+    const meta = [s.user ? `${s.user}@${s.host}` : s.host, info.os, info.cores ? `${info.cores}${NB}${Fmt.plural(info.cores, 'ядро', 'ядра', 'ядер')}` : null].filter(Boolean).join(' · ');
+    const link = h('a', { class: 'bname', href, title: meta }, s.name);
+    const nameCell = h('td', { class: 'c-name' }, h('span', { class: 'bname-row' }, link, noteBadge(s.id)));
+    if (st.why.length) {
+      nameCell.append(h('span', { class: 'bwhy', title: st.why.join('\n') },
+        h('span', { class: 'bwhy-t' }, st.why[0], st.why.length > 1 ? h('i', null, L(' · ещё {0}', st.why.length - 1)) : null,
+          // на телефоне колонка состояния — только значок, длительность переезжает сюда
+          st.since ? h('i', { class: 'bwhy-since' }, ' · ' + sinceShort(st.since)) : null),
+        st.level === 'down' ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => reconnect(s.id) }, icon('refresh'), L('Переподключить')) : null));
+    } else if (st.level === 'off') {
+      nameCell.append(h('span', { class: 'bwhy' }, h('span', { class: 'bwhy-t' }, L('Метрики не собираются')),
+        h('button', { class: 'btn ghost sm', type: 'button', onclick: () => patchServer(s.id, { monitor: true }) }, L('Включить мониторинг'))));
+    }
+    const ref = {
+      cpu: h('td', { class: 'c-cpu num' }), mem: h('td', { class: 'c-mem num' }), disk: h('td', { class: 'c-disk num' }),
+      net: h('td', { class: 'c-net num' }), up: h('td', { class: 'c-uptime num' }),
+    };
+    const av = availStats(s.id);
+    if (!this.shown.has('avail')) {
+      const phone = matchMedia(PHONE).matches;
+      nameCell.append(h('span', { class: 'bmob' }, availStrip(s.id, phone), !phone && av.pct >= 0 ? h('span', { class: 'avail-pct' + (av.pct < 99 ? ' low' : '') }, availPct(av.pct)) : null));
+    }
+    const cells = {
+      state: h('td', { class: 'c-state' }, levelBadge(st)), name: nameCell,
+      avail: this.shown.has('avail') ? h('td', { class: 'c-avail' }, h('span', { class: 'avail' }, availStrip(s.id), av.pct >= 0 ? h('span', { class: 'avail-pct' + (av.pct < 99 ? ' low' : '') }, availPct(av.pct)) : null)) : null,
+      cpu: ref.cpu, mem: ref.mem, disk: ref.disk, net: ref.net, uptime: ref.up,
+    };
+    const tr = h('tr', { class: 'brow lvl-row-' + st.level + (st.level === 'ok' ? ' calm' : '') }, FLEET_COLS.filter(([k]) => this.shown.has(k)).map(([k]) => cells[k]));
+    tr.addEventListener('click', (e) => { if (!e.target.closest('a, button')) location.hash = href; });
+    this.rows.set(s.id, ref);
+    this.updateRow(s);
+    return tr;
   }
 
-  updateSummaryThrottled() {
-    if (this.sumT) return;
-    this.sumT = setTimeout(() => { this.sumT = 0; this.updateSummary(); }, 500);
-  }
-
-  onStatus(srv) {
-    this.replaceCard(srv);
-    this.updateSummary();
-  }
-
-  replaceCard(srv) {
-    const ref = this.cards.get(srv.id);
+  updateRow(s) {
+    const ref = this.rows.get(s.id);
     if (!ref) return;
-    const fresh = this.card(srv);
-    ref.el.replaceWith(fresh);
+    const m = s.status === 'online' && s.latest;
+    const pc = (td, v, warn, crit) => {
+      if (v == null || v < 0) { td.textContent = '—'; td.className = td.className.replace(/ (warn|crit)\b/g, ''); return; }
+      td.textContent = Fmt.pct0(v);
+      td.classList.toggle('warn', v >= warn && v < crit);
+      td.classList.toggle('crit', v >= crit);
+    };
+    if (!m) { for (const k of ['cpu', 'mem', 'disk', 'net', 'up']) ref[k].textContent = '—'; return; }
+    pc(ref.cpu, m.cpu, 85, 95);
+    pc(ref.mem, memPct(m), 85, 95);
+    const parts = dataFS(m), fs = parts.length > 1 ? fullestFS(m) : rootFS(m);
+    pc(ref.disk, fs ? fs.pct : null, 85, 95);
+    ref.disk.title = parts.map((f) => L('{0}: {1} · {2} из {3}', f.mount, Fmt.pct0(f.pct), Fmt.bytes(f.used), Fmt.bytes(f.size))).join('\n');
+    ref.net.replaceChildren(h('span', null, '↓' + NB + Fmt.bits(m.netRx * 8)), h('span', null, '↑' + NB + Fmt.bits(m.netTx * 8)));
+    ref.up.textContent = Fmt.dur(m.uptime);
   }
 
-  destroy() { clearTimeout(this.sumT); }
+  // стрелки вверх и вниз ходят по строкам, не трогая остальную страницу
+  rowKeys(e) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const links = [...this.bodyEl.querySelectorAll('a.bname')];
+    const i = links.indexOf(document.activeElement);
+    if (i < 0) return;
+    const next = links[i + (e.key === 'ArrowDown' ? 1 : -1)];
+    if (next) { e.preventDefault(); next.focus(); }
+  }
+
+  renderTools(vis) {
+    const n = (f) => vis.filter(f).length;
+    const chips = [['all', L('Все'), vis.length], ['bad', L('С проблемами'), n((s) => s._st.level === 'down' || s._st.level === 'warn')], ['down', L('Нет связи'), n((s) => s._st.level === 'down')]];
+    const groups = serverGroups();
+    const sig = JSON.stringify([chips, groups, this.flt, this.grp]);
+    if (sig === this.toolsSig) return; // не пересоздаём поле фильтра, пока в нём печатают
+    this.toolsSig = sig;
+    const seg = h('div', { class: 'seg', role: 'group', 'aria-label': L('Показать') }, chips.map(([k, label, c]) => h('button', {
+      type: 'button', class: this.flt === k ? 'on' : '', 'aria-pressed': String(this.flt === k),
+      onclick: () => { this.flt = k; store.set('fleetFilter', k); this.render(); },
+    }, label, h('span', { class: 'muted' }, NB + c))));
+    let sel = null;
+    if (groups.length) {
+      sel = h('select', { class: 'input', 'aria-label': L('Группа') }, h('option', { value: '' }, L('Все группы')),
+        groups.map((g) => h('option', { value: g, selected: g === this.grp }, g)),
+        vis.some((s) => !s.group) ? h('option', { value: '\u0000', selected: this.grp === '\u0000' }, L('Без группы')) : null);
+      sel.addEventListener('change', () => { this.grp = sel.value; store.set('fleetGroup', this.grp); this.render(); });
+    }
+    const q = h('input', { class: 'input fleet-q', type: 'search', placeholder: L('Фильтр: имя, адрес, группа'), 'aria-label': L('Фильтр серверов'), value: this.q, autocomplete: 'off', spellcheck: 'false' });
+    q.addEventListener('input', () => { this.q = q.value; this.renderSoon(); });
+    this.qEl = q;
+    this.toolsEl.replaceChildren(seg, sel || '', vis.length > 6 ? q : '');
+  }
+
+  resetFilters() {
+    this.flt = 'all'; this.grp = ''; this.q = '';
+    store.set('fleetFilter', 'all'); store.set('fleetGroup', '');
+    this.toolsSig = '';
+    this.render();
+  }
+
+  updateSum() {
+    const vis = this.visible();
+    if (!vis.length) { this.sumEl.textContent = L('Мониторинг и управление по SSH — на серверы ничего не устанавливается'); return; }
+    const on = vis.filter((s) => s.status === 'online');
+    const bad = vis.filter((s) => { const l = srvState(s).level; return l === 'down' || l === 'warn'; }).length;
+    const live = on.filter((s) => s.latest);
+    const rx = live.reduce((a, x) => a + x.latest.netRx, 0), tx = live.reduce((a, x) => a + x.latest.netTx, 0);
+    this.sumEl.replaceChildren(
+      L('{0}{1}{2}, {3} на связи. ', vis.length, NB, Fmt.plural(vis.length, 'сервер', 'сервера', 'серверов'), on.length),
+      bad ? h('b', { class: 'warn-ink' }, L('{0}{1}{2} внимания', bad, NB, Fmt.plural(bad, 'требует', 'требуют', 'требуют'))) : h('span', null, L('Всё в порядке')),
+      live.length ? h('span', { class: 'muted fleet-net' }, L(' · трафик ↓{0}{1} ↑{2}{3}', NB, Fmt.bits(rx * 8), NB, Fmt.bits(tx * 8))) : '');
+  }
+
+  hiddenBlock(hidden) {
+    if (!hidden.length) return '';
+    return h('details', { class: 'fleet-hidden' },
+      h('summary', null, L('Скрытые серверы ({0})', hidden.length)),
+      h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('tbody', null, hidden.map((x) => h('tr', null,
+        h('td', null, h('b', null, x.name)), h('td', { class: 'muted' }, (x.user ? x.user + '@' : '') + x.host),
+        h('td', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', onclick: () => patchServer(x.id, { hidden: false, monitor: true }) }, L('Показать')))))))));
+  }
 }
 
 /* ---------- оповещения ---------- */
-const ALERT_KIND = { offline: 'связь', cpu: 'процессор', mem: 'память', disk: 'диск', failed: 'служба', vpn: 'VPN', temp: 'перегрев', check: 'проверка', cert: 'сертификат' };
+const ALERT_KIND = { offline: L('связь'), cpu: L('процессор'), mem: L('память'), disk: L('диск'), failed: L('служба'), vpn: 'VPN', temp: L('перегрев'), check: L('проверка'), cert: L('сертификат') };
 
 function sinceText(ms) {
   const sec = (Date.now() - ms) / 1000;
-  return sec < 60 ? 'только что' : Fmt.dur(sec) + ' назад';
+  return sec < 60 ? L('только что') : Fmt.dur(sec) + L(' назад');
 }
 
 class AlertsPage {
@@ -670,21 +878,21 @@ class AlertsPage {
     this.eventsEl = h('tbody');
     this.muteEl = h('div', { class: 'mute-list' });
     this.wdEl = h('div', { class: 'wd-list' });
-    this.formEl = h('div', null, h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), ' Загрузка…'));
+    this.formEl = h('div', null, h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), L(' Загрузка…')));
     this.noteEl = h('div');
     this.el.append(
       h('div', { class: 'page-head' },
         h('div', { class: 'head-main' },
-          h('h1', null, 'Оповещения'),
-          h('div', { class: 'head-meta' }, h('span', null, 'Панель проверяет серверы каждые 10 секунд и сообщает о проблемах, пока она запущена на этом компьютере')))),
+          h('h1', null, L('Оповещения')),
+          h('div', { class: 'head-meta' }, h('span', null, L('Панель проверяет серверы каждые 10 секунд и сообщает о проблемах, пока она запущена на этом компьютере'))))),
       this.noteEl,
-      h('div', { class: 'section-title', style: { marginTop: '0' } }, 'Сейчас'),
+      h('div', { class: 'section-title', style: { marginTop: '0' } }, L('Сейчас')),
       this.firingEl,
       this.formEl,
-      h('div', { class: 'section-title' }, 'Журнал',
-        h('button', { class: 'btn ghost sm', type: 'button', style: { marginLeft: 'auto' }, onclick: () => this.clearEvents() }, 'Очистить')),
+      h('div', { class: 'section-title' }, L('Журнал'),
+        h('button', { class: 'btn ghost sm', type: 'button', style: { marginLeft: 'auto' }, onclick: () => this.clearEvents() }, L('Очистить'))),
       h('div', { class: 'card flush' }, h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-        h('thead', null, h('tr', null, h('th', null, 'Когда'), h('th', null, 'Сервер'), h('th', null, 'Событие'), h('th', null, 'Доставка'))),
+        h('thead', null, h('tr', null, h('th', null, L('Когда')), h('th', null, L('Сервер')), h('th', null, L('Событие')), h('th', null, L('Доставка')))),
         this.eventsEl))));
     this.renderFiring();
     this.load();
@@ -704,7 +912,7 @@ class AlertsPage {
       return;
     }
     this.noteEl.replaceChildren(this.notify ? '' : h('div', { class: 'alert warn', style: { marginBottom: '16px' } }, icon('warn'),
-      h('div', null, 'Панель запущена с флагом -notify=false: оповещения записываются в журнал, но никуда не отправляются.')));
+      h('div', null, L('Панель запущена с флагом -notify=false: оповещения записываются в журнал, но никуда не отправляются.'))));
     this.renderFiring();
     this.renderForm();
     this.renderEvents();
@@ -713,7 +921,7 @@ class AlertsPage {
   renderFiring() {
     const list = S.firing;
     if (!list.length) {
-      this.firingEl.replaceChildren(h('div', { class: 'card ok-card' }, h('span', { class: 'dot online' }), 'Всё в порядке — активных оповещений нет'));
+      this.firingEl.replaceChildren(h('div', { class: 'card ok-card' }, h('span', { class: 'dot online' }), L('Всё в порядке — активных оповещений нет')));
       return;
     }
     this.firingEl.replaceChildren(h('div', { class: 'card flush' }, h('div', { class: 'firing' }, list.map((f) => h('a', { class: 'fire-row', href: f.server.startsWith('check:') ? '#/checks' : '#/s/' + encodeURIComponent(f.server) },
@@ -726,14 +934,14 @@ class AlertsPage {
 
   renderEvents() {
     if (!this.events.length) {
-      this.eventsEl.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'muted', style: { textAlign: 'center', padding: '18px' } }, 'Событий пока не было')));
+      this.eventsEl.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'muted', style: { textAlign: 'center', padding: '18px' } }, L('Событий пока не было'))));
       return;
     }
     this.eventsEl.replaceChildren(...this.events.map((e) => h('tr', null,
       h('td', { class: 'nowrap muted' }, Fmt.dateTime(e.t, false)),
       h('td', { class: 'nowrap' }, e.name || '—'),
       h('td', null, h('span', { class: 'ev' }, h('span', { class: 'dot ' + (e.state === 'ok' ? 'online' : 'offline') }), e.text)),
-      h('td', { class: e.err ? 'bad-ink' : 'muted' }, e.err || e.sent || (e.state === 'test' ? '' : 'отправляется…')))));
+      h('td', { class: e.err ? 'bad-ink' : 'muted' }, e.err || e.sent || (e.state === 'test' ? '' : L('отправляется…'))))));
   }
 
   onAlerts(d) {
@@ -756,14 +964,14 @@ class AlertsPage {
   renderMute() {
     const vis = S.servers.filter((s) => !s.hidden);
     if (!vis.length) {
-      this.muteEl.replaceChildren(h('div', { class: 'muted', style: { fontSize: '13px' } }, 'Серверов пока нет'));
+      this.muteEl.replaceChildren(h('div', { class: 'muted', style: { fontSize: '13px' } }, L('Серверов пока нет')));
       return;
     }
     this.muteEl.replaceChildren(...vis.map((s) => {
       const on = !s.mute && s.monitor;
       const b = h('button', {
         type: 'button', class: 'pick' + (on ? ' on' : ''), 'aria-pressed': String(on), disabled: !s.monitor,
-        title: s.monitor ? (on ? 'Нажмите, чтобы не присылать оповещения по этому серверу' : 'Нажмите, чтобы присылать оповещения') : 'Мониторинг выключен — сервер не проверяется',
+        title: s.monitor ? (on ? L('Нажмите, чтобы не присылать оповещения по этому серверу') : L('Нажмите, чтобы присылать оповещения')) : L('Мониторинг выключен — сервер не проверяется'),
       }, h('span', { class: 'pick-box' }, icon('check')), s.name);
       b.addEventListener('click', () => {
         const next = !b.classList.contains('on');
@@ -781,7 +989,7 @@ class AlertsPage {
     let tokenSet = !!c.tgTokenSet;
     const page = this;
     const fmtN = (x) => String(x).replace('.', ',');
-    const TOKEN_SAVED = 'сохранён — вставьте новый, чтобы заменить';
+    const TOKEN_SAVED = L('сохранён — вставьте новый, чтобы заменить');
 
     // ---- автосохранение: каждое изменение уходит на сервер само ----
     const saveState = h('span', { class: 'save-state', role: 'status', 'aria-live': 'polite' });
@@ -789,7 +997,7 @@ class AlertsPage {
       saveState.className = 'save-state' + (cls ? ' ' + cls : '');
       saveState.replaceChildren(...(cls === 'ok' ? [icon('check')] : []), text);
     };
-    setState('Изменения сохраняются сами');
+    setState(L('Изменения сохраняются сами'));
     const invalid = new Set();
     let timer = 0, saving = false, again = false;
     const later = (ms = 700) => { clearTimeout(timer); timer = setTimeout(save, ms); };
@@ -797,10 +1005,10 @@ class AlertsPage {
 
     async function save() {
       clearTimeout(timer);
-      if (invalid.size) { setState('Не сохранено — исправьте поле, выделенное красным', 'bad'); return; }
+      if (invalid.size) { setState(L('Не сохранено — исправьте поле, выделенное красным'), 'bad'); return; }
       if (saving) { again = true; return; }
       saving = true;
-      setState('Сохраняю…');
+      setState(L('Сохраняю…'));
       const body = JSON.parse(JSON.stringify(c));
       // Telegram включится, когда будут и токен, и chat id; остальное сохраняем сразу
       if (CH.telegram && !tgReady()) body.channels.telegram = false;
@@ -813,14 +1021,14 @@ class AlertsPage {
           tokenIn.value = '';
           tokenIn.placeholder = TOKEN_SAVED;
         }
-        if (CH.telegram && !tgReady()) setState('Сохранено. Telegram заработает, когда будут токен и chat id', 'warn');
-        else setState('Сохранено', 'ok');
+        if (CH.telegram && !tgReady()) setState(L('Сохранено. Telegram заработает, когда будут токен и chat id'), 'warn');
+        else setState(L('Сохранено'), 'ok');
         if (S.servers.some((s) => s.info && s.info.watchdog)) {
           clearTimeout(page.wdT);
           page.wdT = setTimeout(() => page.renderWatch(), 12e3);
         }
       } catch (e) {
-        setState('Не сохранено: ' + e.message, 'bad');
+        setState(L('Не сохранено: ') + e.message, 'bad');
       } finally {
         saving = false;
         syncTg();
@@ -836,13 +1044,13 @@ class AlertsPage {
         const v = parseFloat(String(i.value).replace(',', '.'));
         const ok = Number.isFinite(v) && v >= min && v <= max;
         box.classList.toggle('invalid', !ok);
-        box.dataset.err = ok ? '' : `Нужно число от ${fmtN(min)} до ${fmtN(max)}`;
+        box.dataset.err = ok ? '' : L('Нужно число от {0} до {1}', fmtN(min), fmtN(max));
         if (ok) { invalid.delete(i); obj[key] = v; } else invalid.add(i);
         if (onCheck) onCheck();
         return ok;
       };
       i.addEventListener('input', () => { if (check()) later(); else clearTimeout(timer); });
-      i.addEventListener('change', () => { if (check()) save(); else setState('Не сохранено — исправьте поле, выделенное красным', 'bad'); });
+      i.addEventListener('change', () => { if (check()) save(); else setState(L('Не сохранено — исправьте поле, выделенное красным'), 'bad'); });
       return { box, input: i };
     };
 
@@ -860,56 +1068,56 @@ class AlertsPage {
         desc.classList.toggle('bad-ink', !!bad);
         desc.textContent = bad ? bad.box.dataset.err : text(r);
       };
-      if (pct) p = unitIn(r, 'pct', { min: 1, max: 100, unit: '%', label: `${title}: порог в процентах`, onCheck: () => sync() });
-      if (days) p = unitIn(r, 'days', { min: 1, max: 365, unit: 'дн', label: `${title}: за сколько дней`, onCheck: () => sync() });
-      if (min) m = unitIn(r, 'min', { min: minLow, max: 1440, step: 0.5, unit: 'мин', label: `${title}: сколько минут`, onCheck: () => sync() });
+      if (pct) p = unitIn(r, 'pct', { min: 1, max: 100, unit: '%', label: L('{0}: порог в процентах', title), onCheck: () => sync() });
+      if (days) p = unitIn(r, 'days', { min: 1, max: 365, unit: L('дн'), label: L('{0}: за сколько дней', title), onCheck: () => sync() });
+      if (min) m = unitIn(r, 'min', { min: minLow, max: 1440, step: 0.5, unit: L('мин'), label: L('{0}: сколько минут', title), onCheck: () => sync() });
       const slot = (x, label) => h('div', { class: 'ap' + (x ? '' : ' ap-none') }, x ? [h('span', { class: 'ap-label' }, label), x.box] : null);
       const row = h('div', { class: 'arule' },
         sw,
         h('div', { class: 'arule-main', title: hint || null }, h('label', { class: 'arule-title', for: id }, title), desc),
-        (pct || min || days) ? h('div', { class: 'arule-params' }, slot(p, 'порог'), slot(m, 'время')) : null);
+        (pct || min || days) ? h('div', { class: 'arule-params' }, slot(p, L('порог')), slot(m, L('время'))) : null);
       sw.addEventListener('change', () => { r[key] = sw.checked; sync(); save(); });
       sync();
       return row;
     };
-    const after = (n) => (n > 0 ? `дольше ${fmtN(n)} мин` : 'сразу');
+    const after = (n) => (n > 0 ? L('дольше {0} мин', fmtN(n)) : L('сразу'));
     if (!R.temp) R.temp = { on: true, min: 5 };
     if (!R.check) R.check = { on: true, min: 3 };
     if (!R.cert) R.cert = { on: true, days: 14 };
 
     const rules = h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Когда сообщать'),
-        h('div', { class: 'card-sub' }, 'Включите нужные проверки и задайте пороги'))),
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Когда сообщать')),
+        h('div', { class: 'card-sub' }, L('Включите нужные проверки и задайте пороги')))),
       h('div', { class: 'arules' },
-        h('div', { class: 'arule arule-head', 'aria-hidden': 'true' }, h('span'), h('span'), h('span', null, 'Порог'), h('span', null, 'Время')),
-        ruleRow({ r: R.offline, key: 'on', title: 'Сервер недоступен', min: true,
-          text: (x) => `Нет связи с сервером ${after(x.min)}` }),
-        ruleRow({ r: R.cpu, key: 'on', title: 'Высокая нагрузка на процессор', pct: true, min: true, minLow: 0.5,
-          text: (x) => `Загрузка выше ${fmtN(x.pct)} % в среднем за ${fmtN(x.min)} мин` }),
-        ruleRow({ r: R.mem, key: 'on', title: 'Заканчивается память', pct: true, min: true, minLow: 0.5,
-          text: (x) => `Занято больше ${fmtN(x.pct)} % в среднем за ${fmtN(x.min)} мин` }),
-        ruleRow({ r: R.disk, key: 'on', title: 'Заканчивается место на диске', pct: true,
-          text: (x) => `Любой раздел заполнен больше чем на ${fmtN(x.pct)} %` }),
-        ruleRow({ r: R.failed, key: 'on', title: 'Служба упала с ошибкой',
-          text: () => 'Служба systemd в состоянии failed дольше 50 секунд' }),
-        ruleRow({ r: R.vpn, key: 'on', title: 'VPN перестал работать', min: true,
-          hint: 'xray, AmneziaWG, WireGuard, MTProto, sing-box, Hysteria и другие — если панель видела службу работающей, а потом она остановилась',
-          text: (x) => `VPN-служба не работает ${after(x.min)}` }),
-        ruleRow({ r: R.temp, key: 'on', title: 'Перегрев', min: true,
-          hint: 'Порог — критическая температура из датчика, а если датчик её не сообщает: процессор и видеокарта 95 °C, SSD 80 °C, HDD 60 °C',
-          text: (x) => `Процессор, видеокарта или диск горячее порога ${after(x.min)}` }),
-        ruleRow({ r: R.check, key: 'on', title: 'Сайт или порт не отвечает', min: true,
-          hint: 'Проверки со страницы «Сайты и порты» — панель выполняет их с этого компьютера раз в минуту',
-          text: (x) => `Проверка со страницы «Сайты и порты» не проходит ${after(x.min)}` }),
-        ruleRow({ r: R.cert, key: 'on', title: 'Сертификат скоро истекает', days: true,
-          text: (x) => `Осталось меньше ${plural(x.days, 'дня', 'дней', 'дней')} или сертификат не проходит проверку` })),
+        h('div', { class: 'arule arule-head', 'aria-hidden': 'true' }, h('span'), h('span'), h('span', null, L('Порог')), h('span', null, L('Время'))),
+        ruleRow({ r: R.offline, key: 'on', title: L('Сервер недоступен'), min: true,
+          text: (x) => L('Нет связи с сервером {0}', after(x.min)) }),
+        ruleRow({ r: R.cpu, key: 'on', title: L('Высокая нагрузка на процессор'), pct: true, min: true, minLow: 0.5,
+          text: (x) => L('Загрузка выше {0} % в среднем за {1} мин', fmtN(x.pct), fmtN(x.min)) }),
+        ruleRow({ r: R.mem, key: 'on', title: L('Заканчивается память'), pct: true, min: true, minLow: 0.5,
+          text: (x) => L('Занято больше {0} % в среднем за {1} мин', fmtN(x.pct), fmtN(x.min)) }),
+        ruleRow({ r: R.disk, key: 'on', title: L('Заканчивается место на диске'), pct: true,
+          text: (x) => L('Любой раздел заполнен больше чем на {0} %', fmtN(x.pct)) }),
+        ruleRow({ r: R.failed, key: 'on', title: L('Служба упала с ошибкой'),
+          text: () => L('Служба systemd в состоянии failed дольше 50 секунд') }),
+        ruleRow({ r: R.vpn, key: 'on', title: L('VPN перестал работать'), min: true,
+          hint: L('xray, AmneziaWG, WireGuard, MTProto, sing-box, Hysteria и другие — если панель видела службу работающей, а потом она остановилась'),
+          text: (x) => L('VPN-служба не работает {0}', after(x.min)) }),
+        ruleRow({ r: R.temp, key: 'on', title: L('Перегрев'), min: true,
+          hint: L('Порог — критическая температура из датчика, а если датчик её не сообщает: процессор и видеокарта 95 °C, SSD 80 °C, HDD 60 °C'),
+          text: (x) => L('Процессор, видеокарта или диск горячее порога {0}', after(x.min)) }),
+        ruleRow({ r: R.check, key: 'on', title: L('Сайт или порт не отвечает'), min: true,
+          hint: L('Проверки со страницы «Сайты и порты» — панель выполняет их с этого компьютера раз в минуту'),
+          text: (x) => L('Проверка со страницы «Сайты и порты» не проходит {0}', after(x.min)) }),
+        ruleRow({ r: R.cert, key: 'on', title: L('Сертификат скоро истекает'), days: true,
+          text: (x) => L('Осталось меньше {0} или сертификат не проходит проверку', plural(x.days, 'дня', 'дней', 'дней')) })),
       h('div', { class: 'arules arules-extra' },
-        ruleRow({ r: R, key: 'recovery', title: 'Сообщать о восстановлении',
-          text: () => 'Отдельное сообщение, когда проблема прошла' })));
+        ruleRow({ r: R, key: 'recovery', title: L('Сообщать о восстановлении'),
+          text: () => L('Отдельное сообщение, когда проблема прошла') })));
 
     // ---- каналы ----
-    const tokenIn = h('input', { class: 'input mono', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: tokenSet ? TOKEN_SAVED : '123456789:AA…', 'aria-label': 'Токен бота' });
-    const chatIn = h('input', { class: 'input mono', value: CH.tgChat || '', autocomplete: 'off', spellcheck: 'false', placeholder: 'например 123456789', 'aria-label': 'Chat id' });
+    const tokenIn = h('input', { class: 'input mono', type: 'password', autocomplete: 'off', spellcheck: 'false', placeholder: tokenSet ? TOKEN_SAVED : '123456789:AA…', 'aria-label': L('Токен бота') });
+    const chatIn = h('input', { class: 'input mono', value: CH.tgChat || '', autocomplete: 'off', spellcheck: 'false', placeholder: L('например 123456789'), 'aria-label': 'Chat id' });
     const tokenErr = h('span', { class: 'hint bad-ink', hidden: true });
     const chatErr = h('span', { class: 'hint bad-ink', hidden: true });
     const TOKEN_RE = /^\d{5,15}:[A-Za-z0-9_-]{30,64}$/, CHAT_RE = /^(-?\d{1,20}|@[A-Za-z0-9_]{4,64})$/;
@@ -924,26 +1132,26 @@ class AlertsPage {
     };
     tokenIn.addEventListener('input', () => { if (!tokenIn.value.trim()) fieldCheck(tokenIn, tokenErr, TOKEN_RE, ''); });
     tokenIn.addEventListener('change', () => {
-      if (!fieldCheck(tokenIn, tokenErr, TOKEN_RE, 'Токен выглядит неверно: нужен вид 123456789:AA…')) return;
+      if (!fieldCheck(tokenIn, tokenErr, TOKEN_RE, L('Токен выглядит неверно: нужен вид 123456789:AA…'))) return;
       CH.tgToken = tokenIn.value.trim();
       if (CH.tgToken) save();
     });
     chatIn.addEventListener('input', () => { if (!chatIn.value.trim()) fieldCheck(chatIn, chatErr, CHAT_RE, ''); });
     chatIn.addEventListener('change', () => {
-      if (!fieldCheck(chatIn, chatErr, CHAT_RE, 'Chat id — это число (123456789 или -100…) или @имя_канала')) return;
+      if (!fieldCheck(chatIn, chatErr, CHAT_RE, L('Chat id — это число (123456789 или -100…) или @имя_канала'))) return;
       CH.tgChat = chatIn.value.trim();
       save();
     });
     const chatsEl = h('div', { class: 'chips', style: { margin: '2px 0 0' } });
-    const findBtn = h('button', { class: 'btn', type: 'button', onclick: findChats }, 'Найти');
+    const findBtn = h('button', { class: 'btn', type: 'button', onclick: findChats }, L('Найти'));
 
     async function findChats() {
-      chatsEl.replaceChildren(h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + 'Ищу…'));
+      chatsEl.replaceChildren(h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + L('Ищу…')));
       try {
         const r = await api('/alerts/telegram-chats', { method: 'POST', body: { token: tokenIn.value.trim() } });
         const chats = r.chats || [];
         if (!chats.length) {
-          chatsEl.replaceChildren(h('span', { class: 'muted', style: { fontSize: '12.5px' } }, 'Сообщений боту не найдено — напишите ему и нажмите «Найти» ещё раз.'));
+          chatsEl.replaceChildren(h('span', { class: 'muted', style: { fontSize: '12.5px' } }, L('Сообщений боту не найдено — напишите ему и нажмите «Найти» ещё раз.')));
           return;
         }
         chatsEl.replaceChildren(...chats.map((ch) => h('button', {
@@ -958,18 +1166,18 @@ class AlertsPage {
     async function test(channel) {
       try {
         await api('/alerts/test', { method: 'POST', body: { channel, token: tokenIn.value.trim(), chat: chatIn.value.trim() } });
-        toast(channel === 'telegram' ? 'Проверочное сообщение отправлено в Telegram' : 'Проверочное уведомление отправлено');
-      } catch (e) { toast('Не удалось отправить', 'bad', e.message); }
+        toast(channel === 'telegram' ? L('Проверочное сообщение отправлено в Telegram') : L('Проверочное уведомление отправлено'));
+      } catch (e) { toast(L('Не удалось отправить'), 'bad', e.message); }
     }
 
     const step = (n, ...kids) => h('div', { class: 'tg-step' }, h('span', { class: 'tg-n', 'aria-hidden': 'true' }, String(n)), h('div', { class: 'field' }, ...kids));
     const tgSetup = h('div', { class: 'tg-setup' },
-      step(1, h('span', null, 'Токен бота'), tokenIn,
-        h('span', { class: 'hint' }, 'Создайте бота у @BotFather в Telegram и вставьте сюда его токен. Он хранится только на этом компьютере.'), tokenErr),
-      step(2, h('span', null, 'Кому писать'), h('div', { class: 'inline' }, chatIn, findBtn),
-        h('span', { class: 'hint' }, 'Напишите своему боту любое сообщение и нажмите «Найти». Для группы — добавьте бота в группу и напишите там.'), chatErr, chatsEl),
-      step(3, h('span', null, 'Проверка'),
-        h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: () => test('telegram') }, 'Отправить проверочное сообщение'))));
+      step(1, h('span', null, L('Токен бота')), tokenIn,
+        h('span', { class: 'hint' }, L('Создайте бота у @BotFather в Telegram и вставьте сюда его токен. Он хранится только на этом компьютере.')), tokenErr),
+      step(2, h('span', null, L('Кому писать')), h('div', { class: 'inline' }, chatIn, findBtn),
+        h('span', { class: 'hint' }, L('Напишите своему боту любое сообщение и нажмите «Найти». Для группы — добавьте бота в группу и напишите там.')), chatErr, chatsEl),
+      step(3, h('span', null, L('Проверка')),
+        h('div', null, h('button', { class: 'btn sm', type: 'button', onclick: () => test('telegram') }, L('Отправить проверочное сообщение')))));
 
     const chanRow = ({ ico, key, title, desc, extra }) => {
       const id = `ch-${key}-${++uid}`;
@@ -981,15 +1189,15 @@ class AlertsPage {
         extra || h('span'),
         sw) };
     };
-    const local = chanRow({ ico: 'bell', key: 'macos', title: `Уведомления ${osName()}`,
-      desc: h('div', { class: 'arule-desc' }, 'На этом компьютере'),
-      extra: h('button', { class: 'btn ghost sm', type: 'button', onclick: () => test('macos') }, 'Проверить') });
+    const local = chanRow({ ico: 'bell', key: 'macos', title: L('Уведомления {0}', osName()),
+      desc: h('div', { class: 'arule-desc' }, L('На этом компьютере')),
+      extra: h('button', { class: 'btn ghost sm', type: 'button', onclick: () => test('macos') }, L('Проверить')) });
     const tgDesc = h('div', { class: 'arule-desc' });
-    const tgTest = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => test('telegram') }, 'Проверить');
+    const tgTest = h('button', { class: 'btn ghost sm', type: 'button', onclick: () => test('telegram') }, L('Проверить'));
     const tg = chanRow({ ico: 'send', key: 'telegram', title: 'Telegram', desc: tgDesc, extra: tgTest });
     function syncTg() {
       const ready = tgReady();
-      tgDesc.textContent = ready ? `Бот подключён · чат ${CH.tgChat}` : 'Сообщения от вашего бота';
+      tgDesc.textContent = ready ? L('Бот подключён · чат {0}', CH.tgChat) : L('Сообщения от вашего бота');
       tgTest.hidden = !ready;
       // настройка видна, пока Telegram включён и не готов, — или по кнопке «Настроить»
       tgSetup.hidden = !(CH.telegram && (!ready || tgOpen));
@@ -997,16 +1205,16 @@ class AlertsPage {
       if (page.wdSync) page.wdSync();
     }
     let tgOpen = false;
-    const tgEdit = h('button', { class: 'btn ghost sm tg-edit', type: 'button', onclick: () => { tgOpen = true; syncTg(); tokenIn.focus(); } }, 'Изменить бота или чат');
+    const tgEdit = h('button', { class: 'btn ghost sm tg-edit', type: 'button', onclick: () => { tgOpen = true; syncTg(); tokenIn.focus(); } }, L('Изменить бота или чат'));
     syncTg();
 
     const channels = h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Куда присылать'))),
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Куда присылать')))),
       h('div', { class: 'chans' }, local.el, tg.el, tgEdit, tgSetup));
 
     const servers = h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Какие серверы проверять'),
-        h('div', { class: 'card-sub' }, 'Оповещения приходят только по отмеченным'))),
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Какие серверы проверять')),
+        h('div', { class: 'card-sub' }, L('Оповещения приходят только по отмеченным')))),
       this.muteEl);
     this.renderMute();
 
@@ -1014,33 +1222,33 @@ class AlertsPage {
     const W = c.watch || (c.watch = {});
     if (W.restartVpn == null) W.restartVpn = true;
     const wdNote = h('div', { class: 'alert warn wd-note' }, icon('warn'),
-      h('div', null, 'Сторож пишет в Telegram — сначала подключите его в карточке «Куда присылать».'));
+      h('div', null, L('Сторож пишет в Telegram — сначала подключите его в карточке «Куда присылать».')));
     this.wdReady = () => !!CH.telegram && tgReady();
     this.wdSync = () => {
       wdNote.hidden = this.wdReady();
       for (const b of this.wdEl.querySelectorAll('[data-wd-install]')) b.disabled = !this.wdReady();
     };
-    const wdRefresh = h('button', { class: 'btn ghost sm icon-only', type: 'button', title: 'Обновить состояние', 'aria-label': 'Обновить состояние сторожей', onclick: () => this.renderWatch() }, icon('refresh'));
+    const wdRefresh = h('button', { class: 'btn ghost sm icon-only', type: 'button', title: L('Обновить состояние'), 'aria-label': L('Обновить состояние сторожей'), onclick: () => this.renderWatch() }, icon('refresh'));
     const watch = h('div', { class: 'card wd-card' },
       h('div', { class: 'card-head' },
-        h('div', null, h('div', { class: 'card-title' }, 'Сторож на серверах'),
-          h('div', { class: 'card-sub' }, 'Проверяет сервер сам, раз в минуту, и пишет в Telegram — даже когда этот компьютер выключен')),
+        h('div', null, h('div', { class: 'card-title' }, L('Сторож на серверах')),
+          h('div', { class: 'card-sub' }, L('Проверяет сервер сам, раз в минуту, и пишет в Telegram — даже когда этот компьютер выключен'))),
         h('div', { class: 'right' }, wdRefresh)),
       h('p', { class: 'wd-about' },
-        'Сторож — небольшой скрипт с таймером systemd на самом сервере. Он следит за тем, что включено в «Когда сообщать»: VPN-службы, службы с ошибкой, место на дисках, перегрев, — и сообщает о перезагрузке. ',
-        'Пока на сервере стоит сторож, панель не дублирует эти события в Telegram. Что сервер недоступен, по-прежнему сообщает панель: сам о себе сервер этого не скажет.'),
+        L('Сторож — небольшой скрипт с таймером systemd на самом сервере. Он следит за тем, что включено в «Когда сообщать»: VPN-службы, службы с ошибкой, место на дисках, перегрев, — и сообщает о перезагрузке. '),
+        L('Пока на сервере стоит сторож, панель не дублирует эти события в Telegram. Что сервер недоступен, по-прежнему сообщает панель: сам о себе сервер этого не скажет.')),
       wdNote,
       h('div', { class: 'arules arules-extra wd-opts' },
-        ruleRow({ r: W, key: 'restartVpn', title: 'Перезапускать упавшие VPN-службы',
-          text: () => 'Если VPN-служба упала, сторож перезапустит её и напишет, помогло ли. Не чаще раза в 10 минут и не больше трёх раз в час' }),
-        ruleRow({ r: W, key: 'restartOther', title: 'Перезапускать и другие упавшие службы',
-          text: () => 'Только постоянно работающие службы — разовые задачи (Type=oneshot) сторож не трогает' })),
+        ruleRow({ r: W, key: 'restartVpn', title: L('Перезапускать упавшие VPN-службы'),
+          text: () => L('Если VPN-служба упала, сторож перезапустит её и напишет, помогло ли. Не чаще раза в 10 минут и не больше трёх раз в час') }),
+        ruleRow({ r: W, key: 'restartOther', title: L('Перезапускать и другие упавшие службы'),
+          text: () => L('Только постоянно работающие службы — разовые задачи (Type=oneshot) сторож не трогает') })),
       this.wdEl);
     this.wdSync();
     this.renderWatch();
 
     this.formEl.replaceChildren(
-      h('div', { class: 'section-title' }, 'Настройки', h('span', { class: 'grow' }), saveState),
+      h('div', { class: 'section-title' }, L('Настройки'), h('span', { class: 'grow' }), saveState),
       h('div', { class: 'alerts-grid' }, rules, h('div', { class: 'alerts-side' }, channels, servers)),
       watch);
   }
@@ -1050,7 +1258,7 @@ class AlertsPage {
     clearTimeout(this.wdT);
     this.wdKey = this.wdSig();
     const vis = S.servers.filter((s) => !s.hidden);
-    if (!vis.length) { this.wdEl.replaceChildren(h('div', { class: 'muted', style: { fontSize: '13px' } }, 'Серверов пока нет')); return; }
+    if (!vis.length) { this.wdEl.replaceChildren(h('div', { class: 'muted', style: { fontSize: '13px' } }, L('Серверов пока нет'))); return; }
     this.wdEl.replaceChildren(...vis.map((s) => this.wdRow(s)));
     if (this.wdSync) this.wdSync();
   }
@@ -1061,7 +1269,7 @@ class AlertsPage {
     const acts = h('div', { class: 'wd-acts' });
     const row = h('div', { class: 'wd-row' }, h('span', { class: 'dot ' + s.status }),
       h('div', { class: 'wd-main' }, h('div', { class: 'wd-name' }, s.name), st), acts);
-    const ago = (sec) => (sec < 60 ? `${Math.max(0, Math.round(sec))} с назад` : Fmt.dur(sec) + ' назад');
+    const ago = (sec) => (sec < 60 ? L('{0} с назад', Math.max(0, Math.round(sec))) : Fmt.dur(sec) + L(' назад'));
     const btn = (label, cls, fn, extra) => h('button', Object.assign({ class: 'btn sm ' + cls, type: 'button', onclick: fn }, extra || {}), label);
     const busy = (text) => { st.replaceChildren(h('span', { class: 'spinner' }), NB + text); acts.replaceChildren(); };
     const load = async () => {
@@ -1080,78 +1288,78 @@ class AlertsPage {
     const install = async (again) => {
       const restart = W2();
       const ok = await confirmDialog({
-        title: again ? `Обновить сторожа на ${s.name}?` : `Поставить сторожа на ${s.name}?`,
+        title: again ? L('Обновить сторожа на {0}?', s.name) : L('Поставить сторожа на {0}?', s.name),
         text: h('div', null,
-          h('p', { style: { margin: '0 0 8px' } }, 'Панель запишет на сервер скрипт и настройки в /etc/server-panel-watchdog и таймер systemd server-panel-watchdog. Раз в минуту сторож проверяет сервер и пишет в Telegram ваш бот. ', restart),
-          h('p', { class: 'muted', style: { margin: 0, fontSize: '12.5px' } }, 'Токен бота хранится на сервере в файле, который может прочитать только root.')),
-        ok: again ? 'Обновить' : 'Поставить',
+          h('p', { style: { margin: '0 0 8px' } }, L('Панель запишет на сервер скрипт и настройки в /etc/server-panel-watchdog и таймер systemd server-panel-watchdog. Раз в минуту сторож проверяет сервер и пишет в Telegram ваш бот. '), restart),
+          h('p', { class: 'muted', style: { margin: 0, fontSize: '12.5px' } }, L('Токен бота хранится на сервере в файле, который может прочитать только root.'))),
+        ok: again ? L('Обновить') : L('Поставить'),
       });
       if (!ok) return;
-      busy(again ? 'обновляю…' : 'ставлю…');
-      await act('install', again ? `Сторож на ${s.name} обновлён` : `Сторож стоит на ${s.name}: первая проверка — через 10 секунд`);
+      busy(again ? L('обновляю…') : L('ставлю…'));
+      await act('install', again ? L('Сторож на {0} обновлён', s.name) : L('Сторож стоит на {0}: первая проверка — через 10 секунд', s.name));
       this.wdT = setTimeout(() => this.renderWatch(), 15e3);
     };
     const remove = async () => {
       const ok = await confirmDialog({
-        title: `Убрать сторожа с ${s.name}?`,
-        text: 'Таймер, скрипт и настройки сторожа будут удалены с сервера. О событиях этого сервера в Telegram снова будет сообщать панель — пока она запущена.',
-        ok: 'Убрать', danger: true,
+        title: L('Убрать сторожа с {0}?', s.name),
+        text: L('Таймер, скрипт и настройки сторожа будут удалены с сервера. О событиях этого сервера в Telegram снова будет сообщать панель — пока она запущена.'),
+        ok: L('Убрать'), danger: true,
       });
       if (!ok) return;
-      busy('убираю…');
-      act('remove', `Сторож убран с ${s.name}`);
+      busy(L('убираю…'));
+      act('remove', L('Сторож убран с {0}', s.name));
     };
-    const test = async () => { busy('отправляю…'); act('test', 'Проверочное сообщение отправлено'); };
+    const test = async () => { busy(L('отправляю…')); act('test', L('Проверочное сообщение отправлено')); };
     const W2 = () => {
       const w = (this.cfg && this.cfg.watch) || {};
       const vpn = w.restartVpn !== false, other = !!w.restartOther;
-      if (vpn && other) return 'Упавшие службы он перезапускает сам.';
-      if (vpn) return 'Упавшие VPN-службы он перезапускает сам.';
-      if (other) return 'Упавшие службы, кроме VPN, он перезапускает сам.';
-      return 'Сам он ничего не перезапускает — только сообщает.';
+      if (vpn && other) return L('Упавшие службы он перезапускает сам.');
+      if (vpn) return L('Упавшие VPN-службы он перезапускает сам.');
+      if (other) return L('Упавшие службы, кроме VPN, он перезапускает сам.');
+      return L('Сам он ничего не перезапускает — только сообщает.');
     };
     const show = (d) => {
       const lines = [];
       const a = [];
       if (d.offline) {
-        lines.push(h('span', { class: 'muted' }, s.info && s.info.watchdog ? 'сторож стоит · нет связи с сервером' : 'нет связи с сервером'));
+        lines.push(h('span', { class: 'muted' }, s.info && s.info.watchdog ? L('сторож стоит · нет связи с сервером') : L('нет связи с сервером')));
       } else if (d.error) {
         lines.push(h('span', { class: 'bad-ink' }, d.error));
-        a.push(btn('Повторить', 'ghost', load));
+        a.push(btn(L('Повторить'), 'ghost', load));
       } else if (d.foreign) {
-        lines.push(h('span', { class: 'warn-ink' }, `уже есть чужой ${d.foreign} с тем же именем — панель его не трогает, сторож не ставится`));
+        lines.push(h('span', { class: 'warn-ink' }, L('уже есть чужой {0} с тем же именем — панель его не трогает, сторож не ставится', d.foreign)));
       } else if (!d.installed) {
-        if (!d.root) lines.push(h('span', { class: 'muted' }, 'нужен root или sudo без пароля'));
-        else if (!d.systemd) lines.push(h('span', { class: 'muted' }, 'на сервере нет systemd'));
-        else if (!d.curl) lines.push(h('span', { class: 'muted' }, 'на сервере нет curl — установите его (apt install curl)'));
+        if (!d.root) lines.push(h('span', { class: 'muted' }, L('нужен root или sudo без пароля')));
+        else if (!d.systemd) lines.push(h('span', { class: 'muted' }, L('на сервере нет systemd')));
+        else if (!d.curl) lines.push(h('span', { class: 'muted' }, L('на сервере нет curl — установите его (apt install curl)')));
         else {
-          lines.push(h('span', { class: 'muted' }, 'не стоит'));
-          a.push(btn('Поставить', '', () => install(false), { 'data-wd-install': '1', disabled: !this.wdReady() }));
+          lines.push(h('span', { class: 'muted' }, L('не стоит')));
+          a.push(btn(L('Поставить'), '', () => install(false), { 'data-wd-install': '1', disabled: !this.wdReady() }));
         }
       } else {
         const age = d.run && d.now ? d.now - d.run : null;
-        if (!d.active) lines.push(h('span', { class: 'bad-ink' }, 'таймер выключен — сторож не запускается'));
-        else if (age == null) lines.push(h('span', { class: 'muted' }, 'стоит · первая проверка вот-вот'));
-        else if (age > 300) lines.push(h('span', { class: 'warn-ink' }, `стоит · последняя проверка ${ago(age)}`));
-        else lines.push(h('span', { class: 'good-ink' }, `работает · проверка ${ago(age)}`));
-        if (d.stale) lines.push(h('span', { class: 'muted' }, 'настройки на сервере старые'));
-        if (d.err) lines.push(h('span', { class: 'bad-ink' }, `не может написать в Telegram: ${d.err}` + (d.queue ? ` · ждут отправки: ${d.queue}` : '')));
-        if (d.firing && d.firing.length) lines.push(h('span', null, 'сейчас: ' + d.firing.join('; ')));
-        if (d.stale) a.push(btn('Обновить', 'primary', () => install(true), { 'data-wd-install': '1', disabled: !this.wdReady() }));
-        a.push(btn('Проверить', 'ghost', test, { title: 'Сторож пришлёт в Telegram проверочное сообщение' }));
-        a.push(btn('Убрать', 'ghost', remove));
+        if (!d.active) lines.push(h('span', { class: 'bad-ink' }, L('таймер выключен — сторож не запускается')));
+        else if (age == null) lines.push(h('span', { class: 'muted' }, L('стоит · первая проверка вот-вот')));
+        else if (age > 300) lines.push(h('span', { class: 'warn-ink' }, L('стоит · последняя проверка {0}', ago(age))));
+        else lines.push(h('span', { class: 'good-ink' }, L('работает · проверка {0}', ago(age))));
+        if (d.stale) lines.push(h('span', { class: 'muted' }, L('настройки на сервере старые')));
+        if (d.err) lines.push(h('span', { class: 'bad-ink' }, L('не может написать в Telegram: {0}', d.err) + (d.queue ? L(' · ждут отправки: {0}', d.queue) : '')));
+        if (d.firing && d.firing.length) lines.push(h('span', null, L('сейчас: ') + d.firing.join('; ')));
+        if (d.stale) a.push(btn(L('Обновить'), 'primary', () => install(true), { 'data-wd-install': '1', disabled: !this.wdReady() }));
+        a.push(btn(L('Проверить'), 'ghost', test, { title: L('Сторож пришлёт в Telegram проверочное сообщение') }));
+        a.push(btn(L('Убрать'), 'ghost', remove));
       }
       st.replaceChildren(...lines.flatMap((x, i) => (i ? [h('span', { class: 'wd-sep', 'aria-hidden': 'true' }, ' · '), x] : [x])));
       acts.replaceChildren(...a);
     };
     if (s.status !== 'online') show({ offline: true });
-    else { busy('проверяю…'); load(); }
+    else { busy(L('проверяю…')); load(); }
     return row;
   }
 
   async clearEvents() {
     if (!this.events.length) return;
-    const ok = await confirmDialog({ title: 'Очистить журнал оповещений?', text: 'Активные оповещения останутся.', ok: 'Очистить' });
+    const ok = await confirmDialog({ title: L('Очистить журнал оповещений?'), text: L('Активные оповещения останутся.'), ok: L('Очистить') });
     if (!ok) return;
     try { await api('/alerts/events', { method: 'DELETE' }); this.events = []; this.renderEvents(); } catch (e) { toast(e.message, 'bad'); }
   }
@@ -1159,7 +1367,7 @@ class AlertsPage {
   destroy() { clearInterval(this.tick); clearTimeout(this.wdT); }
 }
 
-/* ---------- команды на нескольких серверах ---------- */
+/* ---------- команды: разовые и сохранённые ---------- */
 class CommandsPage {
   constructor() {
     this.kind = 'commands';
@@ -1167,9 +1375,12 @@ class CommandsPage {
     this.sel = new Set(store.get('cmdSel', []));
     this.sudo = store.get('cmdSudo', false);
     this.hi = -1;
+    this.q = '';
+    this.libEl = h('div');
+    this.pinEl = h('div', { class: 'chips cmd-pins' });
     this.pickEl = h('div', { class: 'pick' });
     this.runsEl = h('div', { class: 'runs' });
-    this.input = h('textarea', { class: 'input cmd-in', rows: '2', placeholder: 'Команда или короткий скрипт, например: systemctl is-active xray', spellcheck: 'false', autocomplete: 'off' });
+    this.input = h('textarea', { class: 'input cmd-in', rows: '2', placeholder: L('Команда или короткий скрипт, например: systemctl is-active xray'), 'aria-label': L('Команда'), spellcheck: 'false', autocomplete: 'off' });
     this.input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.run(this.input.value); }
       else if (e.key === 'ArrowUp' && !this.input.value.includes('\n') && S.cmdHist.length) {
@@ -1180,33 +1391,90 @@ class CommandsPage {
     });
     const sudoCb = h('input', { type: 'checkbox', checked: this.sudo });
     sudoCb.addEventListener('change', () => { this.sudo = sudoCb.checked; store.set('cmdSudo', this.sudo); });
-    this.runBtn = h('button', { class: 'btn primary', type: 'button', onclick: () => this.run(this.input.value) }, 'Выполнить');
+    this.runBtn = h('button', { class: 'btn primary', type: 'button', onclick: () => this.run(this.input.value) }, L('Выполнить'));
+    this.newBtn = h('button', { class: 'btn', type: 'button', onclick: () => scenarioDialog() }, icon('plus'), L('Новая команда'));
     this.el.append(
       h('div', { class: 'page-head' },
         h('div', { class: 'head-main' },
-          h('h1', null, 'Команды'),
-          h('div', { class: 'head-meta' }, h('span', null, 'Одна команда на нескольких серверах сразу — по SSH, без интерактивного режима, до 120 секунд')))),
+          h('h1', null, L('Команды')),
+          h('div', { class: 'head-meta' }, h('span', null, L('Разовая команда или сохранённая — на одном или нескольких серверах сразу, по SSH. Терминал — на странице сервера.')))),
+        h('div', { class: 'head-actions' }, this.newBtn)),
+      h('h2', { class: 'section-title' }, L('Сохранённые команды')),
+      this.libEl,
+      h('h2', { class: 'section-title' }, L('Разовая команда')),
       h('div', { class: 'card', style: { marginBottom: '16px' } },
-        h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Серверы')),
+        h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Серверы'))),
           h('div', { class: 'vact' },
-            h('button', { class: 'btn ghost sm', type: 'button', onclick: () => this.selectAll(true) }, 'Все на связи'),
-            h('button', { class: 'btn ghost sm', type: 'button', onclick: () => this.selectAll(false) }, 'Снять выбор'))),
+            h('button', { class: 'btn ghost sm', type: 'button', onclick: () => this.selectAll(true) }, L('Все на связи')),
+            h('button', { class: 'btn ghost sm', type: 'button', onclick: () => this.selectAll(false) }, L('Снять выбор')))),
         this.pickEl,
-        h('div', { class: 'chips', style: { margin: '14px 0 10px' } }, QUICK.map((q) => h('button', { class: 'chip', type: 'button', onclick: () => this.run(q, true) }, q))),
+        this.pinEl,
         h('div', { class: 'cmd-row' }, this.input,
-          h('div', { class: 'cmd-side' }, h('label', { class: 'check', title: 'Для серверов, где вы подключены не под root' }, sudoCb, 'через sudo'), this.runBtn,
+          h('div', { class: 'cmd-side' }, h('label', { class: 'check', title: L('Для серверов, где вы подключены не под root') }, sudoCb, L('через sudo')), this.runBtn,
             h('button', {
-              class: 'btn ghost sm', type: 'button', title: 'Сохранить команду как сценарий',
-              onclick: () => scenarioDialog({ script: this.input.value.trim() || S.cmdHist[S.cmdHist.length - 1] || '', sudo: this.sudo }),
-            }, 'В сценарий'))),
-        h('div', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' } }, 'Enter — выполнить, Shift+Enter — новая строка, ↑ — предыдущие команды. Для редакторов и top откройте «Терминал» на странице сервера.')),
+              class: 'btn ghost sm', type: 'button', title: L('Сохранить эту команду, чтобы запускать одним нажатием'),
+              onclick: () => scenarioDialog({ script: this.input.value.trim() || S.cmdHist[S.cmdHist.length - 1] || '', sudo: this.sudo, pinned: true }),
+            }, icon('star'), L('Сохранить')))),
+        h('div', { class: 'muted', style: { fontSize: '12px', marginTop: '6px' } }, L('Enter — выполнить, Shift+Enter — новая строка, ↑ — предыдущие команды. Без интерактивного режима, до 120 секунд; для редакторов и top — вкладка «Терминал» на странице сервера.'))),
       this.runsEl);
     this.renderPick();
-    for (const r of S.cmdRuns) this.runsEl.append(r.el);
+    this.renderLib();
+    for (const r of [...S.scnRuns, ...S.cmdRuns]) this.runsEl.append(r.el);
   }
 
   onData() { this.renderPick(); }
   onStatus() { this.renderPick(); }
+  onScenarios() { this.renderLib(); }
+
+  picked() { return S.servers.filter((s) => this.sel.has(s.id)).map((s) => s.id); }
+
+  renderLib() {
+    const all = S.scenarios.slice().sort((a, b) => (!!b.pinned - !!a.pinned) || a.name.localeCompare(b.name, I18N.locale));
+    // закреплённые и встроенные быстрые команды — кнопками над полем ввода
+    this.pinEl.replaceChildren(
+      ...all.filter((sc) => sc.pinned).map((sc) => h('button', { class: 'chip pinned', type: 'button', title: sc.script, onclick: () => runScenario(sc, this.picked()) }, icon('play'), sc.name)),
+      ...QUICK.map((q) => h('button', { class: 'chip mono', type: 'button', onclick: () => this.run(q, true) }, q)));
+    this.newBtn.hidden = !all.length; // пока библиотека пуста, кнопка есть в её карточке
+    if (!all.length) {
+      this.libEl.replaceChildren(h('div', { class: 'card empty', style: { marginBottom: '16px' } }, h('b', null, L('Сохранённых команд пока нет')),
+        L('Сохраните то, что запускаете часто: перезапуск службы, проверку места, очистку журналов. Закреплённая команда станет кнопкой здесь, на странице каждого сервера и в палитре (') + MOD_KEY + 'K).',
+        h('div', { style: { marginTop: '14px' } }, h('button', { class: 'btn', type: 'button', onclick: () => scenarioDialog() }, icon('plus'), L('Новая команда')))));
+      return;
+    }
+    const q = this.q.trim().toLowerCase();
+    const list = q ? all.filter((sc) => [sc.name, sc.desc, sc.script].some((v) => v && v.toLowerCase().includes(q))) : all;
+    const row = (sc) => {
+      const pin = h('button', { class: 'btn ghost sm icon-only pin-btn' + (sc.pinned ? ' on' : ''), type: 'button', 'aria-pressed': String(!!sc.pinned),
+        'aria-label': (sc.pinned ? L('Открепить: ') : L('Закрепить: ')) + sc.name, title: sc.pinned ? L('Закреплена — открепить') : L('Закрепить: кнопка здесь, на странице сервера и в палитре'),
+        onclick: () => saveScenarioPatch(sc, { pinned: !sc.pinned }) }, icon('star'));
+      const more = h('button', { class: 'btn ghost sm icon-only', type: 'button', 'aria-label': L('Ещё: {0}', sc.name), title: L('Ещё') }, icon('dots'));
+      more.addEventListener('click', () => popMenu(more, [
+        { label: L('Изменить'), run: () => scenarioDialog(sc) },
+        { label: L('Сделать копию'), run: () => scenarioDialog({ ...sc, id: undefined, name: sc.name + L(' (копия)') }) },
+        { label: L('По расписанию…'), run: () => scheduleDialog({ kind: 'scenario', target: sc.id }) },
+        '-',
+        { label: L('Удалить'), danger: true, run: () => deleteScenario(sc) },
+      ]));
+      const where = sc.servers && sc.servers.length
+        ? `${sc.servers.length}${NB}${Fmt.plural(sc.servers.length, 'сервер', 'сервера', 'серверов')}`
+        : L('спросить при запуске');
+      return h('tr', null,
+        h('td', { class: 'c-pin' }, pin),
+        h('td', { class: 'name-cell' }, h('b', null, sc.name), sc.sudo ? h('span', { class: 'tag' }, L('от root')) : null, sc.quick ? h('span', { class: 'tag' }, L('без подтверждения')) : null,
+          sc.desc ? h('div', { class: 'desc' }, sc.desc) : null),
+        h('td', { class: 'cmd', title: sc.script }, sc.script.split('\n')[0] + (sc.script.includes('\n') ? ' …' : '')),
+        h('td', { class: 'muted nowrap', title: (sc.servers || []).map(srvName).join('\n') }, where),
+        h('td', { class: 'actions' },
+          h('button', { class: 'btn sm', type: 'button', onclick: () => runScenario(sc) }, icon('play'), L('Запустить')), more));
+    };
+    const flt = all.length > 8 ? h('input', { class: 'input search', type: 'search', placeholder: L('Найти команду'), 'aria-label': L('Найти сохранённую команду'), value: this.q }) : null;
+    if (flt) flt.addEventListener('input', () => { this.q = flt.value; this.renderLib(); const n = this.libEl.querySelector('input'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
+    this.libEl.replaceChildren(
+      flt ? h('div', { class: 'toolbar' }, flt, h('span', { class: 'count' }, L('{0} из {1}', list.length, all.length))) : '',
+      h('div', { class: 'tbl-wrap', style: { marginBottom: '20px' } }, h('table', { class: 'tbl cmd-lib' },
+        h('thead', null, h('tr', null, h('th', { class: 'c-pin' }, h('span', { class: 'vh' }, L('Закрепить'))), h('th', null, L('Название')), h('th', null, L('Команда')), h('th', null, L('Серверы')), h('th', null, h('span', { class: 'vh' }, L('Действия'))))),
+        h('tbody', null, list.length ? list.map(row) : h('tr', null, h('td', { colspan: '5', class: 'muted' }, L('Ничего не нашлось')))))));
+  }
 
   renderPick() {
     const vis = S.servers.filter((s) => !s.hidden);
@@ -1221,7 +1489,7 @@ class CommandsPage {
 
   updBtn() {
     const n = this.sel.size;
-    this.runBtn.textContent = n > 1 ? `Выполнить на ${n} ${Fmt.plural(n, 'сервере', 'серверах', 'серверах')}` : 'Выполнить';
+    this.runBtn.textContent = n > 1 ? L('Выполнить на {0} {1}', n, Fmt.plural(n, 'сервере', 'серверах', 'серверах')) : L('Выполнить');
     this.runBtn.disabled = !n;
   }
 
@@ -1235,14 +1503,14 @@ class CommandsPage {
 
   async run(cmd, quick) {
     cmd = cmd.trim();
-    const ids = S.servers.filter((s) => this.sel.has(s.id)).map((s) => s.id);
+    const ids = this.picked();
     if (!cmd) return;
-    if (!ids.length) { toast('Выберите хотя бы один сервер', 'bad'); return; }
+    if (!ids.length) { toast(L('Выберите хотя бы один сервер'), 'bad'); return; }
     if (ids.length > 1 && !quick) {
       const ok = await confirmDialog({
-        title: `Выполнить на ${ids.length} ${Fmt.plural(ids.length, 'сервере', 'серверах', 'серверах')}?`,
-        text: h('div', null, h('pre', { class: 'pre', style: { margin: '0 0 10px' } }, cmd), 'Серверы: ', ids.map((i) => S.by.get(i).name).join(', ')),
-        ok: 'Выполнить',
+        title: L('Выполнить на {0} {1}?', ids.length, Fmt.plural(ids.length, 'сервере', 'серверах', 'серверах')),
+        text: h('div', null, h('pre', { class: 'pre', style: { margin: '0 0 10px' } }, cmd), L('Серверы: '), ids.map((i) => S.by.get(i).name).join(', ')),
+        ok: L('Выполнить'),
       });
       if (!ok) return;
     }
@@ -1265,25 +1533,42 @@ class CommandsPage {
   destroy() {}
 }
 
-const PAGES = { fleet: FleetPage, alerts: AlertsPage, checks: ChecksPage, commands: CommandsPage, scenarios: ScenariosPage, schedule: SchedulePage, notes: NotesPage, manage: ManagePage };
+const PAGES = { fleet: FleetPage, alerts: AlertsPage, checks: ChecksPage, commands: CommandsPage, schedule: SchedulePage, notes: NotesPage, manage: ManagePage };
 
 /* ---------- страница сервера ---------- */
 const TAB_DEFS = [
-  ['overview', 'Обзор'],
-  ['procs', 'Процессы'],
-  ['services', 'Службы'],
+  ['overview', L('Обзор')],
+  ['procs', L('Процессы')],
+  ['services', L('Службы')],
   ['vpn', 'VPN'],
-  ['files', 'Файлы'],
-  ['logs', 'Журнал'],
-  ['network', 'Сеть'],
+  ['files', L('Файлы')],
+  ['logs', L('Журнал')],
+  ['network', L('Сеть')],
   ['docker', 'Docker'],
-  ['system', 'Система'],
-  ['schedule', 'Расписание'],
-  ['notes', 'Заметки'],
-  ['term', 'Терминал'],
+  ['system', L('Система')],
+  ['schedule', L('Расписание')],
+  ['notes', L('Заметки')],
+  ['term', L('Терминал')],
 ];
 
 class ServerPage {
+  // «Команды»: закреплённые сохранённые команды запускаются сразу на этом сервере
+  cmdMenuBtn(s) {
+    const btn = h('button', { class: 'btn', type: 'button', 'aria-haspopup': 'menu' }, icon('play'), L('Команды'));
+    btn.addEventListener('click', () => {
+      const all = S.scenarios.slice().sort((a, b) => (!!b.pinned - !!a.pinned) || a.name.localeCompare(b.name, I18N.locale));
+      const items = [];
+      all.slice(0, 14).forEach((sc, i) => {
+        if (i && !sc.pinned && all[i - 1].pinned) items.push('-');
+        items.push({ label: sc.pinned ? [icon('star'), sc.name] : sc.name, run: () => runScenario(sc, [s.id]) });
+      });
+      if (items.length) items.push('-');
+      items.push({ label: L('Новая команда…'), run: () => scenarioDialog({ pinned: true }) }, { label: L('Все команды'), run: () => { location.hash = '#/commands'; } });
+      popMenu(btn, items);
+    });
+    return btn;
+  }
+
   constructor(id, tab) {
     this.kind = 'server';
     this.id = id;
@@ -1301,10 +1586,18 @@ class ServerPage {
 
   get srv() { return S.by.get(this.id); }
 
+  onAlerts() { this.refreshHead(); }
+
+  onAvail() {
+    if (!this.availEl) return;
+    const av = availStats(this.id);
+    this.availEl.replaceChildren(availStrip(this.id), av.pct >= 0 ? h('span', { class: 'avail-pct' + (av.pct < 99 ? ' low' : '') }, L('{0} за сутки', availPct(av.pct))) : '');
+  }
+
   refreshHead() {
     const s = this.srv;
     if (!s) {
-      this.headEl.replaceChildren(h('div', { class: 'empty' }, h('span', { class: 'spinner' }), ' Загрузка…'));
+      this.headEl.replaceChildren(h('div', { class: 'empty' }, h('span', { class: 'spinner' }), L(' Загрузка…')));
       return;
     }
     const info = s.info || {};
@@ -1313,7 +1606,7 @@ class ServerPage {
     const meta = [
       h('span', { class: 'mono' }, addr),
       info.os ? h('span', null, info.os) : null,
-      info.kernel ? h('span', null, 'ядро ' + info.kernel) : null,
+      info.kernel ? h('span', null, L('ядро ') + info.kernel) : null,
       info.cpu ? h('span', { title: info.cpu }, `${info.cpu.replace(/\s+\d+-Core Processor$/, '')} × ${info.cores}`) : null,
       info.virt ? h('span', null, info.virt) : null,
       this.uptimeEl,
@@ -1321,23 +1614,25 @@ class ServerPage {
     this.headEl.replaceChildren(
       h('div', { class: 'page-head' },
         h('div', { class: 'head-main' },
-          h('div', { class: 'head-title' }, h('h1', null, s.name), statusChip(s)),
+          h('div', { class: 'head-title' }, h('h1', { class: 'mono-h' }, s.name), levelBadge(srvState(s)), this.availEl = h('span', { class: 'avail head-avail' })),
           h('div', { class: 'head-meta' }, meta)),
         h('div', { class: 'head-actions' },
-          h('button', { class: 'btn', type: 'button', onclick: () => reconnect(s.id), title: 'Переподключиться' }, icon('refresh'), 'Переподключить'),
-          h('button', { class: 'btn danger', type: 'button', onclick: () => rebootDialog(s) }, icon('power'), 'Перезагрузить'),
-          h('button', { class: 'btn icon-only', type: 'button', onclick: () => settingsDialog(s), title: 'Настройки сервера', 'aria-label': 'Настройки сервера' }, icon('gear')))),
+          this.cmdMenuBtn(s),
+          h('button', { class: 'btn', type: 'button', onclick: () => reconnect(s.id), title: L('Переподключиться') }, icon('refresh'), L('Переподключить')),
+          h('button', { class: 'btn danger', type: 'button', onclick: () => rebootDialog(s) }, icon('power'), L('Перезагрузить')),
+          h('button', { class: 'btn icon-only', type: 'button', onclick: () => settingsDialog(s), title: L('Настройки сервера'), 'aria-label': L('Настройки сервера') }, icon('gear')))),
       ...[pinnedNotesStrip(s.id)].filter(Boolean));
     this.updateUptime();
+    this.onAvail();
 
     this.alertEl.replaceChildren();
     if (s.status === 'offline') {
-      this.alertEl.append(h('div', { class: 'alert bad', style: { marginBottom: '16px' } }, h('span', { class: 'badge crit' }, 'нет связи'),
-        h('div', null, s.error || 'Сервер недоступен', '. Панель переподключится автоматически.')));
+      this.alertEl.append(h('div', { class: 'alert bad', style: { marginBottom: '16px' } }, h('span', { class: 'badge crit' }, L('нет связи')),
+        h('div', null, s.error || L('Сервер недоступен'), L('. Панель переподключится автоматически.'))));
     } else if (s.status === 'off') {
       this.alertEl.append(h('div', { class: 'alert warn', style: { marginBottom: '16px', alignItems: 'center' } },
-        h('div', { style: { flex: 1 } }, 'Мониторинг выключен — графики не обновляются. Процессы, службы, журнал и консоль работают.'),
-        h('button', { class: 'btn sm', type: 'button', onclick: () => patchServer(s.id, { monitor: true }) }, 'Включить')));
+        h('div', { style: { flex: 1 } }, L('Мониторинг выключен — графики не обновляются. Процессы, службы, журнал и консоль работают.')),
+        h('button', { class: 'btn sm', type: 'button', onclick: () => patchServer(s.id, { monitor: true }) }, L('Включить'))));
     }
     this.renderTabs();
   }
@@ -1345,7 +1640,7 @@ class ServerPage {
   updateUptime() {
     const s = this.srv;
     if (!this.uptimeEl || !s) return;
-    this.uptimeEl.textContent = s.latest ? 'работает ' + Fmt.dur(s.latest.uptime) : '';
+    this.uptimeEl.textContent = s.latest ? L('работает ') + Fmt.dur(s.latest.uptime) : '';
   }
 
   renderTabs() {
@@ -1463,59 +1758,59 @@ function overviewTab(page) {
   let destroyed = false;
 
   const k = {
-    cpu: kpiTile('Процессор'), mem: kpiTile('Память'), disk: kpiTile('Диск /'),
-    load: kpiTile('Нагрузка (load average)'), net: kpiTile('Сеть, входящий'), tcp: kpiTile('Соединения TCP'),
+    cpu: kpiTile(L('Процессор')), mem: kpiTile(L('Память')), disk: kpiTile(L('Диск /')),
+    load: kpiTile(L('Нагрузка (load average)')), net: kpiTile(L('Сеть, входящий')), tcp: kpiTile(L('Соединения TCP')),
   };
   const lastMT = () => { for (let i = pts.length - 1; i >= 0; i--) if (pts[i].mt) return pts[i].mt; return srv() && srv().latest ? srv().latest.memTotal : 0; };
   const cores = () => (srv() && srv().info && srv().info.cores) || 1;
 
   const charts = {
     cpu: new TimeChart({
-      title: 'Загрузка процессора', stacked: true, max: () => 100, fmt: (v) => Fmt.pct(v), axis: (v) => Fmt.int(v) + NB + '%',
+      title: L('Загрузка процессора'), stacked: true, max: () => 100, fmt: (v) => Fmt.pct(v), axis: (v) => Fmt.int(v) + NB + '%',
       series: [
-        { label: 'Пользователь', color: 's1', get: (p) => p.u },
-        { label: 'Система', color: 's2', get: (p) => p.s },
-        { label: 'Ожидание I/O', color: 's3', get: (p) => p.w },
+        { label: L('Пользователь'), color: 's1', get: (p) => p.u },
+        { label: L('Система'), color: 's2', get: (p) => p.s },
+        { label: L('Ожидание I/O'), color: 's3', get: (p) => p.w },
         { label: 'Steal', color: 's4', get: (p) => p.st },
       ],
-      total: (p) => p.c, totalLabel: 'Загрузка',
-      extra: (p) => (p.a ? [['Пик за минуту', Fmt.pct(p.cx || 0)]] : []),
+      total: (p) => p.c, totalLabel: L('Загрузка'),
+      extra: (p) => (p.a ? [[L('Пик за минуту'), Fmt.pct(p.cx || 0)]] : []),
     }),
     mem: new TimeChart({
-      title: 'Память', stacked: true, base: 1024, max: () => lastMT() || null,
+      title: L('Память'), stacked: true, base: 1024, max: () => lastMT() || null,
       fmt: (v) => Fmt.bytes(v), axis: Fmt.axisBytes,
       series: [
-        { label: 'Используется', color: 's1', get: (p) => p.mu },
-        { label: 'Кэш и буферы', color: 's2', get: (p) => p.mc },
+        { label: L('Используется'), color: 's1', get: (p) => p.mu },
+        { label: L('Кэш и буферы'), color: 's2', get: (p) => p.mc },
       ],
-      total: (p) => p.mt, totalLabel: 'Всего',
+      total: (p) => p.mt, totalLabel: L('Всего'),
     }),
     net: new TimeChart({
-      title: 'Сеть', base: 1000, minTop: 8000, fmt: (v) => Fmt.bits(v), axis: Fmt.axisBits,
+      title: L('Сеть'), base: 1000, minTop: 8000, fmt: (v) => Fmt.bits(v), axis: Fmt.axisBits,
       series: [
-        { label: 'Входящий', color: 's1', kind: 'line', get: (p) => p.rx * 8 },
-        { label: 'Исходящий', color: 's2', kind: 'line', get: (p) => p.tx * 8 },
+        { label: L('Входящий'), color: 's1', kind: 'line', get: (p) => p.rx * 8 },
+        { label: L('Исходящий'), color: 's2', kind: 'line', get: (p) => p.tx * 8 },
       ],
     }),
     disk: new TimeChart({
-      title: 'Диск', base: 1024, minTop: 1024, fmt: (v) => Fmt.rate(v), axis: Fmt.axisRate,
+      title: L('Диск'), base: 1024, minTop: 1024, fmt: (v) => Fmt.rate(v), axis: Fmt.axisRate,
       series: [
-        { label: 'Чтение', color: 's1', kind: 'line', get: (p) => p.dr },
-        { label: 'Запись', color: 's2', kind: 'line', get: (p) => p.dw },
+        { label: L('Чтение'), color: 's1', kind: 'line', get: (p) => p.dr },
+        { label: L('Запись'), color: 's2', kind: 'line', get: (p) => p.dw },
       ],
     }),
     load: new TimeChart({
       title: 'Load average', height: 150, minTop: 1, fmt: (v) => Fmt.num(v, 2), axis: (v) => Fmt.num(v, 2),
-      series: [{ label: 'Load average (1 мин)', color: 's1', kind: 'line', get: (p) => p.l }],
+      series: [{ label: L('Load average (1 мин)'), color: 's1', kind: 'line', get: (p) => p.l }],
     }),
     tcp: new TimeChart({
-      title: 'Соединения TCP', height: 150, minTop: 10, fmt: (v) => Fmt.int(v), axis: (v) => Fmt.int(v),
-      series: [{ label: 'Соединений TCP', color: 's1', kind: 'line', get: (p) => p.tcp }],
+      title: L('Соединения TCP'), height: 150, minTop: 10, fmt: (v) => Fmt.int(v), axis: (v) => Fmt.int(v),
+      series: [{ label: L('Соединений TCP'), color: 's1', kind: 'line', get: (p) => p.tcp }],
     }),
   };
 
   const coresEl = h('div', { class: 'cores' });
-  const coresSub = h('div', { class: 'card-sub' }, 'загрузка каждого ядра сейчас');
+  const coresSub = h('div', { class: 'card-sub' }, L('загрузка каждого ядра сейчас'));
   const coresAxis = h('div', { class: 'cores-axis' });
   const fsEl = h('div');
   const ifEl = h('tbody');
@@ -1525,20 +1820,20 @@ function overviewTab(page) {
   const hw = hardwareSection(id);
 
   const chartGrid = h('div', { class: 'grid two' },
-    chartCard('Процессор', charts.cpu),
-    chartCard('Память', charts.mem),
-    chartCard('Сеть', charts.net, 'бит/с, без виртуальных интерфейсов'),
-    chartCard('Диск, ввод-вывод', charts.disk),
-    chartCard('Load average', charts.load, 'средняя очередь задач за 1 минуту'),
-    chartCard('Соединения TCP', charts.tcp));
+    chartCard(L('Процессор'), charts.cpu),
+    chartCard(L('Память'), charts.mem),
+    chartCard(L('Сеть'), charts.net, L('бит/с, без виртуальных интерфейсов')),
+    chartCard(L('Диск, ввод-вывод'), charts.disk),
+    chartCard('Load average', charts.load, L('средняя очередь задач за 1 минуту')),
+    chartCard(L('Соединения TCP'), charts.tcp));
 
   // температуры: график появляется, когда у сервера есть датчики; серии — только те, что есть.
   // Цвет закреплён за компонентом, а не за порядком: процессор всегда s1, плата s2 и т. д.
   const TEMP_SERIES = [
-    ['cpu', 'tc', { label: 'Процессор', color: 's1', kind: 'line', get: (p) => p.tc }],
-    ['board', 'tb', { label: 'Плата', color: 's2', kind: 'line', get: (p) => p.tb }],
-    ['gpu', 'tg', { label: 'Видеокарта', color: 's3', kind: 'line', get: (p) => p.tg }],
-    ['disk', 'td', { label: 'Диски', color: 's4', kind: 'line', get: (p) => p.td }],
+    ['cpu', 'tc', { label: L('Процессор'), color: 's1', kind: 'line', get: (p) => p.tc }],
+    ['board', 'tb', { label: L('Плата'), color: 's2', kind: 'line', get: (p) => p.tb }],
+    ['gpu', 'tg', { label: L('Видеокарта'), color: 's3', kind: 'line', get: (p) => p.tg }],
+    ['disk', 'td', { label: L('Диски'), color: 's4', kind: 'line', get: (p) => p.td }],
   ];
   let tempKey = '';
   let tempCard = null;
@@ -1558,11 +1853,11 @@ function overviewTab(page) {
     if (tempCard) { tempCard.remove(); tempCard = null; }
     if (!kinds.length) return;
     charts.temp = new TimeChart({
-      title: 'Температура', sparse: true, floor: true, fill: false, minTop: 20,
+      title: L('Температура'), sparse: true, floor: true, fill: false, minTop: 20,
       fmt: (v) => `${Fmt.num(v, 1)}${NB}°C`, axis: (v) => `${Fmt.int(v)}${NB}°C`,
       series: kinds.map((x) => x[2]),
     });
-    tempCard = chartCard('Температура', charts.temp, kinds.some((x) => x[0] === 'disk') ? 'диски — самый горячий из них' : null);
+    tempCard = chartCard(L('Температура'), charts.temp, kinds.some((x) => x[0] === 'disk') ? L('диски — самый горячий из них') : null);
     tempCard.classList.add('wide');
     chartGrid.append(tempCard);
     redraw();
@@ -1571,15 +1866,15 @@ function overviewTab(page) {
   const el = h('div', { class: 'ov' },
     h('div', { class: 'grid kpis' }, Object.values(k).map((t) => t.el)),
     hw.el,
-    h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, 'Период'), rangeSeg.el, rangeNote),
+    h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, L('Период')), rangeSeg.el, rangeNote),
     chartGrid,
     h('div', { class: 'grid two', style: { marginTop: '16px' } },
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Ядра процессора'), coresSub)), coresEl, coresAxis),
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, 'Файловые системы')), fsEl)),
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Ядра процессора')), coresSub)), coresEl, coresAxis),
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, L('Файловые системы'))), fsEl)),
     h('div', { class: 'grid', style: { marginTop: '16px' } },
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, 'Сетевые интерфейсы')),
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, L('Сетевые интерфейсы'))),
         h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-          h('thead', null, h('tr', null, h('th', null, 'Интерфейс'), h('th', { class: 'num' }, '↓'), h('th', { class: 'num' }, '↑'), h('th', { class: 'num' }, 'Всего ↓ / ↑'))), ifEl)))));
+          h('thead', null, h('tr', null, h('th', null, L('Интерфейс')), h('th', { class: 'num' }, '↓'), h('th', { class: 'num' }, '↑'), h('th', { class: 'num' }, L('Всего ↓ / ↑')))), ifEl)))));
 
   const widthRO = widthClasses(el, [['w-s', (w) => w <= 560], ['w-m', (w) => w >= 600], ['w-l', (w) => w >= 1080], ['w-xl', (w) => w >= 1280]]);
 
@@ -1599,7 +1894,7 @@ function overviewTab(page) {
       step = d.step || S.interval;
       const covered = pts.length ? (Date.now() - pts[0].t) : 0;
       rangeNote.textContent = RANGES[range] > 3600e3 && covered < RANGES[range] * 0.9
-        ? 'история собирается, пока панель запущена' : '';
+        ? L('история собирается, пока панель запущена') : '';
     } catch (e) {
       rangeNote.textContent = e.message;
     }
@@ -1615,25 +1910,25 @@ function overviewTab(page) {
       for (const t of Object.values(k)) t.set('—', '', s && s.status !== 'online' ? STATUS_TEXT[s.status] : NB, null);
       return;
     }
-    k.cpu.set(Fmt.pct(m.cpu), '', `польз. ${Fmt.pct0(m.user)} · сист. ${Fmt.pct0(m.system)} · I/O ${Fmt.pct0(m.iowait)}` + (m.steal >= 1 ? ` · steal ${Fmt.pct0(m.steal)}` : ''), m.cpu);
-    k.mem.set(Fmt.bytes(m.memUsed), ` из ${Fmt.bytes(m.memTotal)}`, `кэш ${Fmt.bytes(m.memCache)}` + (m.swapTotal ? ` · swap ${Fmt.bytes(m.swapUsed)} из ${Fmt.bytes(m.swapTotal)}` : ' · swap нет'), memPct(m));
+    k.cpu.set(Fmt.pct(m.cpu), '', L('польз. {0} · сист. {1} · I/O {2}', Fmt.pct0(m.user), Fmt.pct0(m.system), Fmt.pct0(m.iowait)) + (m.steal >= 1 ? ` · steal ${Fmt.pct0(m.steal)}` : ''), m.cpu);
+    k.mem.set(Fmt.bytes(m.memUsed), L(' из {0}', Fmt.bytes(m.memTotal)), L('кэш {0}', Fmt.bytes(m.memCache)) + (m.swapTotal ? L(' · swap {0} из {1}', Fmt.bytes(m.swapUsed), Fmt.bytes(m.swapTotal)) : L(' · swap нет')), memPct(m));
     const parts = dataFS(m);
     if (parts.length > 1) {
       const top = fullestFS(m);
-      k.disk.label(`Диски · ${parts.length} ${Fmt.plural(parts.length, 'раздел', 'раздела', 'разделов')}`);
-      k.disk.set(Fmt.pct(top.pct), ' на ' + top.mount, parts.filter((f) => f !== top).map((f) => `${f.mount} ${Fmt.pct0(f.pct)}`).join(' · '), top.pct);
-      k.disk.el.title = parts.map((f) => `${f.mount}: ${Fmt.bytes(f.used)} из ${Fmt.bytes(f.size)}, свободно ${Fmt.bytes(f.avail)}`).join('\n');
+      k.disk.label(L('Диски · {0} {1}', parts.length, Fmt.plural(parts.length, 'раздел', 'раздела', 'разделов')));
+      k.disk.set(Fmt.pct(top.pct), L(' на ') + top.mount, parts.filter((f) => f !== top).map((f) => `${f.mount} ${Fmt.pct0(f.pct)}`).join(' · '), top.pct);
+      k.disk.el.title = parts.map((f) => L('{0}: {1} из {2}, свободно {3}', f.mount, Fmt.bytes(f.used), Fmt.bytes(f.size), Fmt.bytes(f.avail))).join('\n');
     } else {
       const fs = rootFS(m);
-      k.disk.label('Диск ' + (fs ? fs.mount : '/'));
+      k.disk.label(L('Диск ') + (fs ? fs.mount : '/'));
       k.disk.el.title = '';
-      if (fs) k.disk.set(Fmt.pct(fs.pct), '', `${Fmt.bytes(fs.used)} из ${Fmt.bytes(fs.size)} · свободно ${Fmt.bytes(fs.avail)}`, fs.pct);
-      else k.disk.set('—', '', 'нет данных', null);
+      if (fs) k.disk.set(Fmt.pct(fs.pct), '', L('{0} из {1} · свободно {2}', Fmt.bytes(fs.used), Fmt.bytes(fs.size), Fmt.bytes(fs.avail)), fs.pct);
+      else k.disk.set('—', '', L('нет данных'), null);
     }
     const c = cores();
-    k.load.set(Fmt.num(m.load[0], 2), '', `5 мин ${Fmt.num(m.load[1], 2)} · 15 мин ${Fmt.num(m.load[2], 2)} · ядер ${c}`, (m.load[0] / c) * 100);
-    k.net.set(Fmt.bits(m.netRx * 8), '', `исходящий ${Fmt.bits(m.netTx * 8)} · диск ${Fmt.rate(m.diskR + m.diskW)}`, null);
-    k.tcp.set(Fmt.int(m.tcp), '', `процессов ${Fmt.int(m.procs)} · выполняется ${Fmt.int(m.procsRun)}`, null);
+    k.load.set(Fmt.num(m.load[0], 2), '', L('5 мин {0} · 15 мин {1} · ядер {2}', Fmt.num(m.load[1], 2), Fmt.num(m.load[2], 2), c), (m.load[0] / c) * 100);
+    k.net.set(Fmt.bits(m.netRx * 8), '', L('исходящий {0} · диск {1}', Fmt.bits(m.netTx * 8), Fmt.rate(m.diskR + m.diskW)), null);
+    k.tcp.set(Fmt.int(m.tcp), '', L('процессов {0} · выполняется {1}', Fmt.int(m.procs), Fmt.int(m.procsRun)), null);
     hw.temps(m.temps);
     ensureTempChart(m.temps);
 
@@ -1647,11 +1942,11 @@ function overviewTab(page) {
     (m.cores || []).forEach((v, i) => {
       const c2 = coresEl.children[i];
       c2.firstChild.style.height = Math.max(1, v) + '%';
-      c2.title = `Ядро ${i}: ${Fmt.pct(v)}`;
+      c2.title = L('Ядро {0}: {1}', i, Fmt.pct(v));
       sum += v;
       if (v > m.cores[maxI]) maxI = i;
     });
-    if (n) coresSub.textContent = n === 1 ? `одно ядро · сейчас ${Fmt.pct(m.cores[0])}` : `${n} ${Fmt.plural(n, 'ядро', 'ядра', 'ядер')} · в среднем ${Fmt.pct(sum / n)} · больше всего ядро ${maxI} (${Fmt.pct(m.cores[maxI])})`;
+    if (n) coresSub.textContent = n === 1 ? L('одно ядро · сейчас {0}', Fmt.pct(m.cores[0])) : L('{0} {1} · в среднем {2} · больше всего ядро {3} ({4})', n, Fmt.plural(n, 'ядро', 'ядра', 'ядер'), Fmt.pct(sum / n), maxI, Fmt.pct(m.cores[maxI]));
     // файловые системы
     const boot = (f) => /^\/boot(\/|$)|^\/efi$/.test(f.mount);
     const fsList = (m.fs || []).slice().sort((a, b) => (boot(a) - boot(b)) || (a.mount === '/' ? -1 : b.mount === '/' ? 1 : a.mount.localeCompare(b.mount)));
@@ -1661,7 +1956,7 @@ function overviewTab(page) {
         h('div', { class: 'fs-name', title: f.dev }, f.mount, h('span', { class: 'muted' }, f.dev.replace('/dev/', ''))),
         h('div', { class: 'fs-val' }, `${Fmt.bytes(f.used)} / ${Fmt.bytes(f.size)} · ${Fmt.pct0(f.pct)}`), mt.el);
     }));
-    if (!(m.fs || []).length) fsEl.replaceChildren(h('div', { class: 'muted' }, 'нет данных'));
+    if (!(m.fs || []).length) fsEl.replaceChildren(h('div', { class: 'muted' }, L('нет данных')));
     renderIfaces(ifEl, m);
   }
 
@@ -1695,11 +1990,11 @@ function overviewTab(page) {
 function renderIfaces(tbody, m) {
   const list = (m && m.ifaces || []).filter((x) => x.name !== 'lo');
   tbody.replaceChildren(...list.map((x) => h('tr', null,
-    h('td', null, h('b', { style: { fontWeight: 500 } }, x.name), x.virtual ? h('span', { class: 'muted', style: { marginLeft: '6px', fontSize: '12px' } }, 'вирт.') : null),
+    h('td', null, h('b', { style: { fontWeight: 500 } }, x.name), x.virtual ? h('span', { class: 'muted', style: { marginLeft: '6px', fontSize: '12px' } }, L('вирт.')) : null),
     h('td', { class: 'num' }, Fmt.bits(x.rx * 8)),
     h('td', { class: 'num' }, Fmt.bits(x.tx * 8)),
     h('td', { class: 'num muted' }, `${Fmt.bytes(x.rxTotal)} / ${Fmt.bytes(x.txTotal)}`))));
-  if (!list.length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'muted' }, 'нет данных')));
+  if (!list.length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'muted' }, L('нет данных'))));
 }
 
 /* ---------- вкладка «Процессы» ---------- */
@@ -1710,26 +2005,28 @@ function procsTab(page) {
   const count = h('span', { class: 'count' });
   const errBox = h('div');
   const cols = [
-    ['pid', 'PID', 'num'], ['name', 'Процесс', ''], ['user', 'Пользователь', ''], ['cpu', 'CPU %', 'num'],
-    ['mem', 'Память %', 'num'], ['rss', 'RSS', 'num'], ['threads', 'Потоки', 'num'], ['elapsed', 'Работает', 'num'], [null, '', ''],
+    ['pid', 'PID', 'num'], ['name', L('Процесс'), ''], ['user', L('Пользователь'), ''], ['cpu', 'CPU %', 'num'],
+    ['mem', L('Память %'), 'num'], ['rss', 'RSS', 'num'], ['threads', L('Потоки'), 'num'], ['elapsed', L('Работает'), 'num'], [null, '', ''],
   ];
   const thead = h('tr');
   function renderHead() {
+    // заголовок сортируется кнопкой — так до него можно дойти с клавиатуры
+    const sortBy = (key) => { st.sort = { k: key, d: st.sort.k === key ? -st.sort.d : (key === 'name' || key === 'user' ? 1 : -1) }; store.set('procSort', st.sort); renderHead(); render(); };
     thead.replaceChildren(...cols.map(([key, label, cls]) => h('th', {
-      class: (cls ? cls + ' ' : '') + (key ? 'sortable' : ''),
-      onclick: key ? () => { st.sort = { k: key, d: st.sort.k === key ? -st.sort.d : (key === 'name' || key === 'user' ? 1 : -1) }; store.set('procSort', st.sort); renderHead(); render(); } : null,
-    }, label, key && st.sort.k === key ? h('span', { class: 'arrow' }, st.sort.d > 0 ? '↑' : '↓') : null)));
+      class: (cls ? cls + ' ' : '') + (key ? 'sortable' : ''), scope: 'col',
+      'aria-sort': key && st.sort.k === key ? (st.sort.d > 0 ? 'ascending' : 'descending') : null,
+    }, key ? h('button', { class: 'th-btn', type: 'button', onclick: () => sortBy(key) }, label, st.sort.k === key ? sortIcon(st.sort.d > 0) : null) : label)));
   }
   renderHead();
 
-  const search = h('input', { class: 'input search', type: 'search', placeholder: 'Поиск: имя, команда, пользователь, PID', oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); render(); } });
+  const search = h('input', { class: 'input search', type: 'search', placeholder: L('Поиск: имя, команда, пользователь, PID'), oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); render(); } });
   const el = h('div', null,
     h('div', { class: 'toolbar' },
       search,
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { st.kernel = e.target.checked; render(); } }), 'Потоки ядра'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => { st.auto = e.target.checked; schedule(); } }), 'Автообновление'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { st.kernel = e.target.checked; render(); } }), L('Потоки ядра')),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true, onchange: (e) => { st.auto = e.target.checked; schedule(); } }), L('Автообновление')),
       h('span', { class: 'grow' }), count,
-      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), 'Обновить')),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), L('Обновить'))),
     errBox,
     h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, thead), tbody)));
 
@@ -1742,7 +2039,7 @@ function procsTab(page) {
     if (st.busy) return;
     st.busy = true;
     clearTimeout(st.timer);
-    if (!st.data) tbody.replaceChildren(h('tr', null, h('td', { colspan: '9', class: 'empty' }, h('span', { class: 'spinner' }), NB + ' Загрузка процессов…')));
+    if (!st.data) tbody.replaceChildren(h('tr', null, h('td', { colspan: '9', class: 'empty' }, h('span', { class: 'spinner' }), NB + L(' Загрузка процессов…'))));
     try {
       st.data = await api(`/servers/${encodeURIComponent(id)}/procs`);
       errBox.replaceChildren();
@@ -1765,7 +2062,7 @@ function procsTab(page) {
       const x = a[k], y = b[k];
       return (typeof x === 'string' ? x.localeCompare(y) : x - y) * d;
     });
-    count.textContent = `показано ${Math.min(list.length, 300)} из ${total}`;
+    count.textContent = L('показано {0} из {1}', Math.min(list.length, 300), total);
     tbody.replaceChildren(...list.slice(0, 300).map((p) => h('tr', null,
       h('td', { class: 'num muted' }, p.pid),
       h('td', { class: 'name-cell' }, h('b', null, p.name), h('div', { class: 'cmd', title: p.cmd }, p.cmd)),
@@ -1776,23 +2073,23 @@ function procsTab(page) {
       h('td', { class: 'num' }, p.threads),
       h('td', { class: 'num muted' }, Fmt.dur(p.elapsed)),
       h('td', { class: 'actions' }, p.kernel || p.pid <= 1 ? null : h('span', { class: 'row-actions' },
-        h('button', { class: 'btn sm', type: 'button', onclick: () => kill(p, 'TERM') }, 'Завершить'),
+        h('button', { class: 'btn sm', type: 'button', onclick: () => kill(p, 'TERM') }, L('Завершить')),
         h('button', { class: 'btn sm danger', type: 'button', onclick: () => kill(p, 'KILL') }, 'Kill'))))));
-    if (!list.length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '9', class: 'empty' }, 'Ничего не найдено')));
+    if (!list.length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '9', class: 'empty' }, L('Ничего не найдено'))));
   }
 
   async function kill(p, sig) {
     const ok = await confirmDialog({
-      title: sig === 'KILL' ? 'Принудительно завершить процесс?' : 'Завершить процесс?',
-      text: h('div', null, h('b', null, p.name), ` (PID ${p.pid}, пользователь ${p.user || '?'})`, h('div', { class: 'cmd mono', style: { marginTop: '8px', wordBreak: 'break-all' } }, p.cmd)),
-      warn: sig === 'KILL' ? 'Сигнал KILL нельзя перехватить: процесс не успеет сохранить данные.' : null,
-      ok: sig === 'KILL' ? 'Отправить KILL' : 'Отправить TERM', danger: true,
+      title: sig === 'KILL' ? L('Принудительно завершить процесс?') : L('Завершить процесс?'),
+      text: h('div', null, h('b', null, p.name), L(' (PID {0}, пользователь {1})', p.pid, p.user || '?'), h('div', { class: 'cmd mono', style: { marginTop: '8px', wordBreak: 'break-all' } }, p.cmd)),
+      warn: sig === 'KILL' ? L('Сигнал KILL нельзя перехватить: процесс не успеет сохранить данные.') : null,
+      ok: sig === 'KILL' ? L('Отправить KILL') : L('Отправить TERM'), danger: true,
     });
     if (!ok) return;
     try {
       const r = await api(`/servers/${encodeURIComponent(id)}/procs/kill`, { method: 'POST', body: { pid: p.pid, signal: sig } });
-      if (r.ok) toast(`Сигнал ${sig} отправлен процессу ${p.name} (${p.pid})`);
-      else toast('Не удалось завершить процесс', 'bad', r.error);
+      if (r.ok) toast(L('Сигнал {0} отправлен процессу {1} ({2})', sig, p.name, p.pid));
+      else toast(L('Не удалось завершить процесс'), 'bad', r.error);
     } catch (e) { toast(e.message, 'bad'); }
     setTimeout(load, 700);
   }
@@ -1805,17 +2102,17 @@ function procsTab(page) {
 const RISKY_UNITS = /^(ssh|sshd|tailscaled|networking|systemd-networkd|NetworkManager|systemd-resolved|dbus|dbus-broker|systemd-logind|wg-quick@.*|netplan.*)\.service$/;
 
 function serviceState(s) {
-  if (s.active === 'failed') return ['bad', 'ошибка'];
-  if (unitBad(s)) return ['bad', 'падает и перезапускается'];
-  if (s.active === 'active' && s.sub === 'running') return ['good', 'работает'];
-  if (s.active === 'active' && s.sub === 'exited') return ['good', 'выполнена'];
+  if (s.active === 'failed') return ['bad', L('ошибка')];
+  if (unitBad(s)) return ['bad', L('падает и перезапускается')];
+  if (s.active === 'active' && s.sub === 'running') return ['good', L('работает')];
+  if (s.active === 'active' && s.sub === 'exited') return ['good', L('выполнена')];
   if (s.active === 'active') return ['good', s.sub];
-  if (s.active === 'activating') return ['warn', 'запускается'];
-  if (s.active === 'deactivating') return ['warn', 'останавливается'];
-  if (s.active === 'reloading') return ['warn', 'перезагружается'];
-  return ['idle', 'остановлена'];
+  if (s.active === 'activating') return ['warn', L('запускается')];
+  if (s.active === 'deactivating') return ['warn', L('останавливается')];
+  if (s.active === 'reloading') return ['warn', L('перезагружается')];
+  return ['idle', L('остановлена')];
 }
-const ENABLED_TEXT = { enabled: 'включён', disabled: 'выключен', static: 'статический', masked: 'заблокирован', indirect: 'косвенный', generated: 'сгенерирован', alias: 'псевдоним', 'enabled-runtime': 'включён (временно)', transient: 'временный' };
+const ENABLED_TEXT = { enabled: L('включён'), disabled: L('выключен'), static: L('статический'), masked: L('заблокирован'), indirect: L('косвенный'), generated: L('сгенерирован'), alias: L('псевдоним'), 'enabled-runtime': L('включён (временно)'), transient: L('временный') };
 
 function servicesTab(page) {
   const id = page.id;
@@ -1823,21 +2120,21 @@ function servicesTab(page) {
   const tbody = h('tbody');
   const errBox = h('div');
   const failedBox = h('div');
-  const filterSeg = seg([['all', 'Все'], ['running', 'Работают'], ['failed', 'С ошибкой'], ['stopped', 'Остановлены']], 'all', (v) => { st.filter = v; render(); });
+  const filterSeg = seg([['all', L('Все')], ['running', L('Работают')], ['failed', L('С ошибкой')], ['stopped', L('Остановлены')]], 'all', (v) => { st.filter = v; render(); });
   const count = h('span', { class: 'count' });
   const el = h('div', null,
     h('div', { class: 'toolbar' },
-      h('input', { class: 'input search', type: 'search', placeholder: 'Поиск службы', oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); render(); } }),
+      h('input', { class: 'input search', type: 'search', placeholder: L('Поиск службы'), oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); render(); } }),
       filterSeg.el, h('span', { class: 'grow' }), count,
-      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), 'Обновить')),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), L('Обновить'))),
     errBox, failedBox,
     h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-      h('thead', null, h('tr', null, h('th', null, 'Служба'), h('th', null, 'Состояние'), h('th', null, 'Автозапуск'), h('th'))), tbody)));
+      h('thead', null, h('tr', null, h('th', null, L('Служба')), h('th', null, L('Состояние')), h('th', null, L('Автозапуск')), h('th'))), tbody)));
 
   async function load() {
     if (st.busy) return;
     st.busy = true;
-    if (!st.data) tbody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'empty' }, h('span', { class: 'spinner' }), NB + ' Загрузка служб…')));
+    if (!st.data) tbody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'empty' }, h('span', { class: 'spinner' }), NB + L(' Загрузка служб…'))));
     try {
       st.data = (await api(`/servers/${encodeURIComponent(id)}/services`)).services || [];
       page.services = st.data;
@@ -1859,36 +2156,36 @@ function servicesTab(page) {
     });
     failedBox.replaceChildren(failed.length ? h('div', { class: 'alert bad', style: { marginBottom: '12px' } },
       h('span', { class: 'badge crit' }, `${failed.length} ${Fmt.plural(failed.length, 'ошибка', 'ошибки', 'ошибок')}`),
-      h('div', null, 'С ошибкой: ', failed.map((s) => s.unit.replace(/\.service$/, '')).join(', '))) : '');
+      h('div', null, L('С ошибкой: '), failed.map((s) => s.unit.replace(/\.service$/, '')).join(', '))) : '');
     let list = all;
     if (st.filter === 'running') list = running;
     else if (st.filter === 'failed') list = failed;
     else if (st.filter === 'stopped') list = all.filter((s) => s.active === 'inactive');
     if (st.q) list = list.filter((s) => s.unit.toLowerCase().includes(st.q) || s.description.toLowerCase().includes(st.q));
-    count.textContent = `${list.length} из ${all.length}`;
+    count.textContent = L('{0} из {1}', list.length, all.length);
     tbody.replaceChildren(...list.map((s) => {
       const [cls, text] = serviceState(s);
       const active = s.active === 'active' || s.active === 'activating' || s.active === 'reloading';
-      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': `Ещё: ${s.unit}`, title: 'Ещё' }, icon('dots'));
+      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': L('Ещё: {0}', s.unit), title: L('Ещё') }, icon('dots'));
       more.addEventListener('click', () => popMenu(more, [
-        { label: 'Журнал службы', run: () => openLogs(s.unit) },
-        { label: 'Перечитать конфигурацию (reload)', run: () => act(s, 'reload') },
-        { label: 'Перезапуск по расписанию…', run: () => scheduleDialog({ servers: [id], kind: 'service', target: s.unit }) },
+        { label: L('Журнал службы'), run: () => openLogs(s.unit) },
+        { label: L('Перечитать конфигурацию (reload)'), run: () => act(s, 'reload') },
+        { label: L('Перезапуск по расписанию…'), run: () => scheduleDialog({ servers: [id], kind: 'service', target: s.unit }) },
         '-',
-        s.enabled === 'enabled' ? { label: 'Выключить автозапуск', run: () => act(s, 'disable') } : { label: 'Включить автозапуск', run: () => act(s, 'enable') },
+        s.enabled === 'enabled' ? { label: L('Выключить автозапуск'), run: () => act(s, 'disable') } : { label: L('Включить автозапуск'), run: () => act(s, 'enable') },
       ]));
       return h('tr', null,
         h('td', { class: 'name-cell' }, h('b', null, s.unit.replace(/\.service$/, '')), h('div', { class: 'desc', title: s.description }, s.description || NB)),
         h('td', null, h('span', { class: 'st ' + cls }, h('span', { class: 'dot' }), text), s.active === 'active' && s.sub !== 'running' && s.sub !== 'exited' ? h('span', { class: 'muted' }, ' ' + s.sub) : null),
         h('td', { class: 'ink2' }, ENABLED_TEXT[s.enabled] || s.enabled || '—'),
         h('td', { class: 'actions' },
-          h('button', { class: 'btn sm', type: 'button', onclick: () => act(s, 'restart') }, 'Перезапустить'),
+          h('button', { class: 'btn sm', type: 'button', onclick: () => act(s, 'restart') }, L('Перезапустить')),
           active
-            ? h('button', { class: 'btn sm', type: 'button', onclick: () => act(s, 'stop') }, 'Остановить')
-            : h('button', { class: 'btn sm', type: 'button', onclick: () => act(s, 'start') }, 'Запустить'),
+            ? h('button', { class: 'btn sm', type: 'button', onclick: () => act(s, 'stop') }, L('Остановить'))
+            : h('button', { class: 'btn sm', type: 'button', onclick: () => act(s, 'start') }, L('Запустить')),
           more));
     }));
-    if (!list.length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'empty' }, all.length ? 'Ничего не найдено' : 'Службы systemd не найдены')));
+    if (!list.length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'empty' }, all.length ? L('Ничего не найдено') : L('Службы systemd не найдены'))));
   }
 
   function openLogs(unit) {
@@ -1906,8 +2203,8 @@ function servicesTab(page) {
 }
 
 const SVC_ACT = {
-  start: ['Запустить', 'запущена'], stop: ['Остановить', 'остановлена'], restart: ['Перезапустить', 'перезапущена'],
-  reload: ['Перечитать конфигурацию', 'перечитала конфигурацию'], enable: ['Включить автозапуск', 'добавлена в автозапуск'], disable: ['Выключить автозапуск', 'убрана из автозапуска'],
+  start: [L('Запустить'), L('запущена')], stop: [L('Остановить'), L('остановлена')], restart: [L('Перезапустить'), L('перезапущена')],
+  reload: [L('Перечитать конфигурацию'), L('перечитала конфигурацию')], enable: [L('Включить автозапуск'), L('добавлена в автозапуск')], disable: [L('Выключить автозапуск'), L('убрана из автозапуска')],
 };
 
 async function serviceAction(page, unit, action, extraWarn) {
@@ -1917,8 +2214,8 @@ async function serviceAction(page, unit, action, extraWarn) {
   if (action !== 'start' && action !== 'enable') {
     const ok = await confirmDialog({
       title: `${A[0]} «${name}»?`,
-      text: `Сервер: ${page.srv.name}. Команда: systemctl ${action} ${unit}`,
-      warn: risky ? 'Эта служба отвечает за сеть или удалённый доступ — её остановка может оборвать подключение к серверу.' : extraWarn || null,
+      text: L('Сервер: {0}. Команда: systemctl {1} {2}', page.srv.name, action, unit),
+      warn: risky ? L('Эта служба отвечает за сеть или удалённый доступ — её остановка может оборвать подключение к серверу.') : extraWarn || null,
       ok: A[0], danger: action === 'stop' || action === 'disable' || risky,
     });
     if (!ok) return false;
@@ -1926,8 +2223,8 @@ async function serviceAction(page, unit, action, extraWarn) {
   toast(`${A[0]}: ${name}…`, 'warn');
   try {
     const r = await api(`/servers/${encodeURIComponent(page.id)}/services/action`, { method: 'POST', body: { unit, action } });
-    if (r.ok) toast(`Служба ${name} ${A[1]}`);
-    else toast(`Не получилось: ${A[0].toLowerCase()} ${name}`, 'bad', r.error);
+    if (r.ok) toast(L('Служба {0} {1}', name, A[1]));
+    else toast(L('Не получилось: {0} {1}', A[0].toLowerCase(), name), 'bad', r.error);
     return r.ok;
   } catch (e) { toast(e.message, 'bad'); return false; }
 }
@@ -1968,7 +2265,7 @@ function fileTime(sec) {
 const pathJoin = (dir, name) => (dir === '/' ? '' : dir) + '/' + name;
 const pathDir = (p) => { const i = p.lastIndexOf('/'); return i <= 0 ? '/' : p.slice(0, i); };
 const pathBase = (p) => p.slice(p.lastIndexOf('/') + 1);
-const validName = (v) => (!v ? 'Введите имя' : v.includes('/') ? 'Имя не может содержать «/»' : v === '.' || v === '..' ? 'Недопустимое имя' : '');
+const validName = (v) => (!v ? L('Введите имя') : v.includes('/') ? L('Имя не может содержать «/»') : v === '.' || v === '..' ? L('Недопустимое имя') : '');
 
 function filesTab(page) {
   const id = page.id;
@@ -1998,25 +2295,25 @@ function filesTab(page) {
   rootCb.addEventListener('change', () => { st.root = rootCb.checked; store.set('filesRoot:' + id, st.root); load(); });
   const upInput = h('input', { type: 'file', multiple: true, hidden: true });
   upInput.addEventListener('change', () => { upload([...upInput.files]); upInput.value = ''; });
-  const filterIn = h('input', { class: 'input search', type: 'search', placeholder: 'Фильтр по имени', oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); render(); } });
+  const filterIn = h('input', { class: 'input search', type: 'search', placeholder: L('Фильтр по имени'), oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); render(); } });
 
-  const places = [['Домашняя', home], ['/etc', '/etc'], ['systemd', '/etc/systemd/system'], ['/usr/local/etc', '/usr/local/etc'], ['/opt', '/opt'], ['/var/log', '/var/log'], ['/tmp', '/tmp']];
+  const places = [[L('Домашняя'), home], ['/etc', '/etc'], ['systemd', '/etc/systemd/system'], ['/usr/local/etc', '/usr/local/etc'], ['/opt', '/opt'], ['/var/log', '/var/log'], ['/tmp', '/tmp']];
   const el = h('div', null,
     h('div', { class: 'toolbar' },
-      h('button', { class: 'btn sm', type: 'button', title: 'На уровень выше', onclick: () => go(pathDir(st.path)) }, '↑ Наверх'),
+      h('button', { class: 'btn sm', type: 'button', title: L('На уровень выше'), onclick: () => go(pathDir(st.path)) }, icon('up'), L('Наверх')),
       pathIn,
-      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), 'Обновить'),
-      canSudo ? h('label', { class: 'check', title: 'Выполнять через sudo -n' }, rootCb, 'как root') : null),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), L('Обновить')),
+      canSudo ? h('label', { class: 'check', title: L('Выполнять через sudo -n') }, rootCb, L('как root')) : null),
     h('div', { class: 'toolbar' },
       h('div', { class: 'chips', style: { margin: 0 } }, places.map(([l, p]) => h('button', { class: 'chip', type: 'button', onclick: () => go(p) }, l))),
       h('span', { class: 'grow' }),
-      h('button', { class: 'btn sm', type: 'button', onclick: () => newFolder() }, 'Новая папка'),
-      h('button', { class: 'btn sm', type: 'button', onclick: () => newFile() }, 'Новый файл'),
-      h('button', { class: 'btn sm', type: 'button', onclick: () => upInput.click() }, 'Загрузить'), upInput),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => newFolder() }, L('Новая папка')),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => newFile() }, L('Новый файл')),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => upInput.click() }, L('Загрузить')), upInput),
     crumbs, errBox,
     h('div', { class: 'toolbar', style: { marginBottom: '8px' } }, filterIn, h('span', { class: 'grow' }), count),
     h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl files' },
-      h('thead', null, h('tr', null, h('th', null, 'Имя'), h('th', { class: 'num' }, 'Размер'), h('th', null, 'Изменён'), h('th', null, 'Права'), h('th', null, 'Владелец'), h('th'))),
+      h('thead', null, h('tr', null, h('th', null, L('Имя')), h('th', { class: 'num' }, L('Размер')), h('th', null, L('Изменён')), h('th', null, L('Права')), h('th', null, L('Владелец')), h('th'))),
       tbody)));
 
   const q = () => (st.root ? '&root=1' : '');
@@ -2036,13 +2333,13 @@ function filesTab(page) {
     st.busy = true;
     pathIn.value = st.path;
     renderCrumbs();
-    tbody.replaceChildren(h('tr', null, h('td', { colspan: '6', class: 'empty' }, h('span', { class: 'spinner' }), NB + ' Загрузка…')));
+    tbody.replaceChildren(h('tr', null, h('td', { colspan: '6', class: 'empty' }, h('span', { class: 'spinner' }), NB + L(' Загрузка…'))));
     try {
       const d = await api(url('list', st.path));
       st.path = d.path;
       st.entries = d.entries;
       store.set('files:' + id, st.path);
-      errBox.replaceChildren(d.truncated ? h('div', { class: 'alert warn', style: { marginBottom: '10px' } }, 'Файлов очень много — показана только часть.') : '');
+      errBox.replaceChildren(d.truncated ? h('div', { class: 'alert warn', style: { marginBottom: '10px' } }, L('Файлов очень много — показана только часть.')) : '');
       pathIn.value = st.path;
       renderCrumbs();
       render();
@@ -2071,24 +2368,24 @@ function filesTab(page) {
   function render() {
     let list = st.entries;
     if (st.q) list = list.filter((e) => e.name.toLowerCase().includes(st.q));
-    count.textContent = st.q ? `${list.length} из ${st.entries.length}` : `${st.entries.length} ${Fmt.plural(st.entries.length, 'объект', 'объекта', 'объектов')}`;
+    count.textContent = st.q ? L('{0} из {1}', list.length, st.entries.length) : `${st.entries.length} ${Fmt.plural(st.entries.length, 'объект', 'объекта', 'объектов')}`;
     if (!list.length) {
-      tbody.replaceChildren(h('tr', null, h('td', { colspan: '6', class: 'empty' }, st.entries.length ? 'Ничего не найдено' : 'Папка пуста')));
+      tbody.replaceChildren(h('tr', null, h('td', { colspan: '6', class: 'empty' }, st.entries.length ? L('Ничего не найдено') : L('Папка пуста'))));
       return;
     }
     tbody.replaceChildren(...list.map((e) => {
       const full = pathJoin(st.path, e.name);
       const dir = isDir(e);
-      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': 'Ещё', title: 'Ещё' }, icon('dots'));
+      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': L('Ещё'), title: L('Ещё') }, icon('dots'));
       more.addEventListener('click', (ev) => {
         ev.stopPropagation();
         popMenu(more, [
-          dir ? { label: 'Открыть', run: () => go(full) } : { label: 'Открыть в редакторе', run: () => openFile(full) },
-          !dir && e.type !== 'd' ? { label: 'Скачать', run: () => download(full) } : null,
-          { label: 'Копировать путь', run: () => copyText(full) },
+          dir ? { label: L('Открыть'), run: () => go(full) } : { label: L('Открыть в редакторе'), run: () => openFile(full) },
+          !dir && e.type !== 'd' ? { label: L('Скачать'), run: () => download(full) } : null,
+          { label: L('Копировать путь'), run: () => copyText(full) },
           '-',
-          { label: 'Переименовать', run: () => rename(e) },
-          { label: 'Удалить', danger: true, run: () => remove(e) },
+          { label: L('Переименовать'), run: () => rename(e) },
+          { label: L('Удалить'), danger: true, run: () => remove(e) },
         ].filter(Boolean));
       });
       // не «dot»: этот класс занят точкой статуса (8×8 px), строка схлопнулась бы в кружок
@@ -2121,18 +2418,18 @@ function filesTab(page) {
       const target = pathJoin(st.path, f.name);
       let overwrite = false;
       if (st.entries.some((e) => e.name === f.name)) {
-        overwrite = await confirmDialog({ title: `Заменить «${f.name}»?`, text: `В ${st.path} уже есть файл с таким именем.`, ok: 'Заменить', danger: true });
+        overwrite = await confirmDialog({ title: L('Заменить «{0}»?', f.name), text: L('В {0} уже есть файл с таким именем.', st.path), ok: L('Заменить'), danger: true });
         if (!overwrite) continue;
       }
-      toast(`Загрузка ${f.name} (${Fmt.bytes(f.size)})…`, 'warn');
+      toast(L('Загрузка {0} ({1})…', f.name, Fmt.bytes(f.size)), 'warn');
       try {
         const res = await fetch('/api' + url('upload', target) + (overwrite ? '&overwrite=1' : ''), {
           method: 'POST', headers: { 'X-Panel-Token': TOKEN, 'Content-Type': 'application/octet-stream' }, body: f,
         });
         const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || 'Ошибка ' + res.status);
-        toast(`${f.name} загружен`);
-      } catch (e) { toast(`Не удалось загрузить ${f.name}`, 'bad', e.message); }
+        if (!res.ok) throw new Error(d.error || L('Ошибка ') + res.status);
+        toast(L('{0} загружен', f.name));
+      } catch (e) { toast(L('Не удалось загрузить {0}', f.name), 'bad', e.message); }
     }
     load();
   }
@@ -2147,47 +2444,47 @@ function filesTab(page) {
   }
 
   async function newFolder() {
-    const name = await promptDialog({ title: 'Новая папка', label: `Имя папки в ${st.path}`, ok: 'Создать', validate: validName });
-    if (name) op({ op: 'mkdir', path: pathJoin(st.path, name) }, 'Папка создана');
+    const name = await promptDialog({ title: L('Новая папка'), label: L('Имя папки в {0}', st.path), ok: L('Создать'), validate: validName });
+    if (name) op({ op: 'mkdir', path: pathJoin(st.path, name) }, L('Папка создана'));
   }
 
   async function newFile() {
-    const name = await promptDialog({ title: 'Новый файл', label: `Имя файла в ${st.path}`, ok: 'Создать', validate: validName });
+    const name = await promptDialog({ title: L('Новый файл'), label: L('Имя файла в {0}', st.path), ok: L('Создать'), validate: validName });
     if (!name) return;
-    if (st.entries.some((e) => e.name === name)) { toast('Такой файл уже есть', 'bad'); return; }
+    if (st.entries.some((e) => e.name === name)) { toast(L('Такой файл уже есть'), 'bad'); return; }
     fileEditor(page, { path: pathJoin(st.path, name), content: '', sha: '', isNew: true, root: st.root, onSaved: load });
   }
 
   async function rename(e) {
-    const name = await promptDialog({ title: 'Переименовать', label: `Новое имя для «${e.name}»`, value: e.name, ok: 'Переименовать', validate: validName });
+    const name = await promptDialog({ title: L('Переименовать'), label: L('Новое имя для «{0}»', e.name), value: e.name, ok: L('Переименовать'), validate: validName });
     if (!name || name === e.name) return;
-    op({ op: 'rename', path: pathJoin(st.path, e.name), to: pathJoin(st.path, name) }, 'Переименовано');
+    op({ op: 'rename', path: pathJoin(st.path, e.name), to: pathJoin(st.path, name) }, L('Переименовано'));
   }
 
   async function remove(e) {
     const dir = e.type === 'd';
     const ok = await confirmDialog({
-      title: `Удалить «${e.name}»?`, text: `${pathJoin(st.path, e.name)} — удаление нельзя отменить.`,
-      warn: dir ? 'Папка будет удалена вместе со всем содержимым.' : null, ok: 'Удалить', danger: true,
+      title: L('Удалить «{0}»?', e.name), text: L('{0} — удаление нельзя отменить.', pathJoin(st.path, e.name)),
+      warn: dir ? L('Папка будет удалена вместе со всем содержимым.') : null, ok: L('Удалить'), danger: true,
     });
-    if (ok) op({ op: 'delete', path: pathJoin(st.path, e.name) }, 'Удалено');
+    if (ok) op({ op: 'delete', path: pathJoin(st.path, e.name) }, L('Удалено'));
   }
 
   async function openFile(p, unit) {
-    toast('Открываю ' + pathBase(p) + '…', 'warn');
+    toast(L('Открываю ') + pathBase(p) + '…', 'warn');
     try {
       const d = await api(url('read', p));
       if (d.tooBig || d.binary) {
         const m = modal({
           title: pathBase(p),
-          body: h('div', { class: 'form' }, h('div', { class: 'ink2' }, d.tooBig ? `Файл слишком большой для редактора (${Fmt.bytes(d.size)}, можно до 2 МБ).` : 'Это двоичный файл — его можно только скачать.')),
-          foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Закрыть'), h('button', { class: 'btn primary', type: 'button', onclick: () => { download(p); m.close(); } }, 'Скачать')],
+          body: h('div', { class: 'form' }, h('div', { class: 'ink2' }, d.tooBig ? L('Файл слишком большой для редактора ({0}, можно до 2 МБ).', Fmt.bytes(d.size)) : L('Это двоичный файл — его можно только скачать.'))),
+          foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Закрыть')), h('button', { class: 'btn primary', type: 'button', onclick: () => { download(p); m.close(); } }, L('Скачать'))],
         });
         return;
       }
       fileEditor(page, Object.assign(d, { root: st.root, unit, onSaved: () => { if (pathDir(p) === st.path) load(); }, onDownload: () => download(p) }));
     } catch (e) {
-      toast(`Не удалось открыть ${pathBase(p)}`, 'bad', e.message + (canSudo && !st.root && /доступ/.test(e.message) ? '\nВключите «как root».' : ''));
+      toast(L('Не удалось открыть {0}', pathBase(p)), 'bad', e.message + (canSudo && !st.root && /доступ/.test(e.message) ? L('\nВключите «как root».') : ''));
     }
   }
 
@@ -2207,15 +2504,15 @@ function fileEditor(page, f) {
   ta.value = saved;
   const stat = h('span', { class: 'muted' });
   const warnBox = h('div');
-  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, f.isNew ? 'Создать' : 'Сохранить');
-  const restartBtn = f.unit ? h('button', { class: 'btn', type: 'button' }, `Сохранить и перезапустить ${f.unit.replace(/\.service$/, '')}`) : null;
-  const undoBtn = h('button', { class: 'btn ghost left', type: 'button', hidden: true }, 'Вернуть как было');
+  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, f.isNew ? L('Создать') : L('Сохранить'));
+  const restartBtn = f.unit ? h('button', { class: 'btn', type: 'button' }, L('Сохранить и перезапустить {0}', f.unit.replace(/\.service$/, ''))) : null;
+  const undoBtn = h('button', { class: 'btn ghost left', type: 'button', hidden: true }, L('Вернуть как было'));
   const dirty = () => ta.value !== saved;
-  const meta = f.isNew ? 'новый файл' : [Fmt.bytes(f.size), fmtMode('f', f.mode), `${f.user}:${f.group}`, 'изменён ' + fileTime(f.mtime)].join(' · ');
+  const meta = f.isNew ? L('новый файл') : [Fmt.bytes(f.size), fmtMode('f', f.mode), `${f.user}:${f.group}`, L('изменён ') + fileTime(f.mtime)].join(' · ');
 
   function upd() {
     const lines = ta.value.split('\n').length;
-    stat.textContent = `${lines} ${Fmt.plural(lines, 'строка', 'строки', 'строк')}` + (dirty() ? ' · есть несохранённые изменения' : '');
+    stat.textContent = `${lines} ${Fmt.plural(lines, 'строка', 'строки', 'строк')}` + (dirty() ? L(' · есть несохранённые изменения') : '');
     saveBtn.disabled = !dirty() && !f.isNew;
     if (restartBtn) restartBtn.disabled = false;
   }
@@ -2232,13 +2529,13 @@ function fileEditor(page, f) {
 
   const m = modal({
     title: name, cls: 'editor',
-    lead: h('span', null, h('span', { class: 'mono' }, f.path), ' · ', meta, f.root ? ' · как root' : ''),
-    body: h('div', { class: 'editor-body' }, warnBox, ta, h('div', { class: 'editor-status' }, stat, h('span', { class: 'muted' }, '⌘S — сохранить'))),
-    foot: [undoBtn, f.onDownload ? h('button', { class: 'btn ghost', type: 'button', onclick: () => f.onDownload() }, 'Скачать') : null,
-      h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Закрыть'), restartBtn, saveBtn],
+    lead: h('span', null, h('span', { class: 'mono' }, f.path), ' · ', meta, f.root ? L(' · как root') : ''),
+    body: h('div', { class: 'editor-body' }, warnBox, ta, h('div', { class: 'editor-status' }, stat, h('span', { class: 'muted' }, L('⌘S — сохранить')))),
+    foot: [undoBtn, f.onDownload ? h('button', { class: 'btn ghost', type: 'button', onclick: () => f.onDownload() }, L('Скачать')) : null,
+      h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Закрыть')), restartBtn, saveBtn],
     beforeClose: () => {
       if (!dirty()) return true;
-      confirmDialog({ title: 'Закрыть без сохранения?', text: 'Изменения в файле будут потеряны.', ok: 'Закрыть', danger: true }).then((ok) => { if (ok) m.close(true); });
+      confirmDialog({ title: L('Закрыть без сохранения?'), text: L('Изменения в файле будут потеряны.'), ok: L('Закрыть'), danger: true }).then((ok) => { if (ok) m.close(true); });
       return false;
     },
   });
@@ -2254,7 +2551,7 @@ function fileEditor(page, f) {
     warnBox.replaceChildren();
     if (isJSON && text.trim()) {
       try { JSON.parse(text); } catch (e) {
-        const ok = await confirmDialog({ title: 'В JSON есть ошибка', text: e.message, warn: 'Программа может не запуститься с таким файлом (если только она не допускает комментарии в JSON, как xray).', ok: 'Сохранить всё равно', danger: true });
+        const ok = await confirmDialog({ title: L('В JSON есть ошибка'), text: e.message, warn: L('Программа может не запуститься с таким файлом (если только она не допускает комментарии в JSON, как xray).'), ok: L('Сохранить всё равно'), danger: true });
         if (!ok) return;
       }
     }
@@ -2265,16 +2562,16 @@ function fileEditor(page, f) {
       sha = r.sha;
       saved = text;
       f.isNew = false;
-      saveBtn.textContent = 'Сохранить';
+      saveBtn.textContent = L('Сохранить');
       undoBtn.hidden = before === null;
-      toast(`${name} сохранён`);
+      toast(L('{0} сохранён', name));
       if (f.onSaved) f.onSaved();
       if (restart && f.unit) {
-        const ok = await serviceAction(page, f.unit, 'restart', 'Клиенты VPN на несколько секунд потеряют соединение.');
-        if (ok) warnBox.replaceChildren(h('div', { class: 'alert good-alert' }, `Служба ${f.unit.replace(/\.service$/, '')} перезапущена. Проверьте журнал, что она запустилась без ошибок.`));
+        const ok = await serviceAction(page, f.unit, 'restart', L('Клиенты VPN на несколько секунд потеряют соединение.'));
+        if (ok) warnBox.replaceChildren(h('div', { class: 'alert good-alert' }, L('Служба {0} перезапущена. Проверьте журнал, что она запустилась без ошибок.', f.unit.replace(/\.service$/, ''))));
       }
     } catch (e) {
-      warnBox.replaceChildren(h('div', { class: 'alert bad' }, 'Не сохранено: ' + e.message));
+      warnBox.replaceChildren(h('div', { class: 'alert bad' }, L('Не сохранено: ') + e.message));
     }
     upd();
   }
@@ -2282,7 +2579,7 @@ function fileEditor(page, f) {
   if (restartBtn) restartBtn.addEventListener('click', () => save(true));
   undoBtn.addEventListener('click', async () => {
     if (before === null) return;
-    const ok = await confirmDialog({ title: 'Вернуть файл как было?', text: 'На сервер будет записано содержимое до вашего последнего сохранения.', ok: 'Вернуть' });
+    const ok = await confirmDialog({ title: L('Вернуть файл как было?'), text: L('На сервер будет записано содержимое до вашего последнего сохранения.'), ok: L('Вернуть') });
     if (!ok) return;
     try {
       const r = await write(before, sha);
@@ -2291,9 +2588,9 @@ function fileEditor(page, f) {
       ta.value = before;
       before = null;
       undoBtn.hidden = true;
-      toast(`${name}: возвращено как было`);
+      toast(L('{0}: возвращено как было', name));
       if (f.onSaved) f.onSaved();
-    } catch (e) { warnBox.replaceChildren(h('div', { class: 'alert bad' }, 'Не получилось: ' + e.message)); }
+    } catch (e) { warnBox.replaceChildren(h('div', { class: 'alert bad' }, L('Не получилось: ') + e.message)); }
     upd();
   });
 }
@@ -2302,15 +2599,15 @@ function fileEditor(page, f) {
 function vpnTab(page) {
   const id = page.id;
   const st = { data: null, timer: 0, busy: false, dead: false, open: new Set() };
-  const k = { svc: kpiTile('VPN-службы'), conns: kpiTile('TCP-соединения клиентов'), ips: kpiTile('Клиентские IP'), wg: kpiTile('WireGuard / AmneziaWG') };
+  const k = { svc: kpiTile(L('VPN-службы')), conns: kpiTile(L('TCP-соединения клиентов')), ips: kpiTile(L('Клиентские IP')), wg: kpiTile('WireGuard / AmneziaWG') };
   const listEl = h('div', { class: 'vlist' });
   const stoppedEl = h('div');
   const errBox = h('div');
   const upd = h('span', { class: 'count' });
   const el = h('div', null,
     h('div', { class: 'grid kpis' }, Object.values(k).map((t) => t.el)),
-    h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, 'Службы VPN и прокси, найденные по названию'), h('span', { class: 'grow' }), upd,
-      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), 'Обновить')),
+    h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, L('Службы VPN и прокси, найденные по названию')), h('span', { class: 'grow' }), upd,
+      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), L('Обновить'))),
     errBox, listEl, stoppedEl);
 
   const short = (u) => u.replace(/\.service$/, '');
@@ -2321,11 +2618,11 @@ function vpnTab(page) {
     if (st.busy || st.dead) return;
     st.busy = true;
     clearTimeout(st.timer);
-    if (!st.data) listEl.replaceChildren(h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), NB + ' Собираю сведения о VPN-службах…'));
+    if (!st.data) listEl.replaceChildren(h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), NB + L(' Собираю сведения о VPN-службах…')));
     try {
       st.data = await api(`/servers/${encodeURIComponent(id)}/vpn`);
       errBox.replaceChildren(st.data.privileged ? '' : h('div', { class: 'alert warn', style: { marginBottom: '12px' } }, icon('warn'),
-        h('div', null, 'Нет прав root или sudo без пароля — порты служб и пиры WireGuard могут быть видны не полностью.')));
+        h('div', null, L('Нет прав root или sudo без пароля — порты служб и пиры WireGuard могут быть видны не полностью.'))));
       render();
     } catch (e) {
       errBox.replaceChildren(h('div', { class: 'alert bad', style: { marginBottom: '12px' } }, e.message));
@@ -2337,7 +2634,7 @@ function vpnTab(page) {
   function portChip(p) {
     const local = p.addr === '127.0.0.1' || p.addr === '::1' || p.addr === 'localhost';
     const label = `${p.proto.toUpperCase()} ${p.port}`;
-    const extra = p.proto === 'tcp' && !local ? (p.conns ? ` · ${Fmt.int(p.conns)} ${Fmt.plural(p.conns, 'соединение', 'соединения', 'соединений')}${p.ips ? ` · ${p.ips} IP` : ''}` : ' · нет соединений') : local ? ' · только локально' : '';
+    const extra = p.proto === 'tcp' && !local ? (p.conns ? ` · ${Fmt.int(p.conns)} ${Fmt.plural(p.conns, 'соединение', 'соединения', 'соединений')}${p.ips ? ` · ${p.ips} IP` : ''}` : L(' · нет соединений')) : local ? L(' · только локально') : '';
     return h('span', { class: 'pchip' + (local ? ' dim' : ''), title: `${p.addr || '*'}:${p.port}` }, h('b', null, label), extra);
   }
 
@@ -2346,21 +2643,21 @@ function vpnTab(page) {
     const peers = showAll ? w.list : w.list.slice(0, 8);
     const now = Date.now();
     return h('div', { class: 'wg' },
-      h('div', { class: 'wg-head' }, h('b', null, w.name), w.port ? h('span', { class: 'muted' }, `порт ${w.port}`) : null,
-        h('span', null, `пиров ${w.peers}, активны ${w.active}`), h('span', { class: 'muted' }, `↓ ${Fmt.bytes(w.rx)} · ↑ ${Fmt.bytes(w.tx)}`)),
+      h('div', { class: 'wg-head' }, h('b', null, w.name), w.port ? h('span', { class: 'muted' }, L('порт {0}', w.port)) : null,
+        h('span', null, L('пиров {0}, активны {1}', w.peers, w.active)), h('span', { class: 'muted' }, `↓ ${Fmt.bytes(w.rx)} · ↑ ${Fmt.bytes(w.tx)}`)),
       w.list.length ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl compact' },
-        h('thead', null, h('tr', null, h('th', null, 'Пир'), h('th', null, 'Адрес'), h('th', null, 'Разрешённые IP'), h('th', null, 'Рукопожатие'), h('th', { class: 'num' }, '↓ / ↑'))),
+        h('thead', null, h('tr', null, h('th', null, L('Пир')), h('th', null, L('Адрес')), h('th', null, L('Разрешённые IP')), h('th', null, L('Рукопожатие')), h('th', { class: 'num' }, '↓ / ↑'))),
         h('tbody', null, peers.map((p) => {
           const age = p.handshake ? (now - p.handshake) / 1000 : null;
           return h('tr', null,
             h('td', { class: 'mono' }, p.key),
             h('td', { class: 'mono' }, p.endpoint || '—'),
             h('td', { class: 'mono' }, p.allowed || '—'),
-            h('td', null, h('span', { class: 'st ' + (age != null && age < 180 ? 'good' : 'idle') }, h('span', { class: 'dot' }), age == null ? 'не было' : Fmt.dur(age) + ' назад')),
+            h('td', null, h('span', { class: 'st ' + (age != null && age < 180 ? 'good' : 'idle') }, h('span', { class: 'dot' }), age == null ? L('не было') : Fmt.dur(age) + L(' назад'))),
             h('td', { class: 'num' }, `${Fmt.bytes(p.rx)} / ${Fmt.bytes(p.tx)}`));
         })))) : null,
       w.list.length > 8 ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { if (showAll) st.open.delete(w.name); else st.open.add(w.name); render(); } },
-        showAll ? 'Свернуть' : `Показать всех (${w.list.length})`) : null);
+        showAll ? L('Свернуть') : L('Показать всех ({0})', w.list.length)) : null);
   }
 
   function card(s) {
@@ -2368,26 +2665,26 @@ function vpnTab(page) {
     const ports = s.ports.filter((p) => !p.eph);
     const eph = s.ports.length - ports.length;
     const stats = [
-      s.since ? ['Работает', Fmt.dur(s.since)] : null,
-      s.mem ? ['Память', Fmt.bytes(s.mem)] : null,
-      s.cpuSec ? ['Время CPU', Fmt.dur(s.cpuSec)] : null,
-      ['Перезапусков', String(s.restarts || 0)],
-      s.version ? ['Версия', s.version] : null,
+      s.since ? [L('Работает'), Fmt.dur(s.since)] : null,
+      s.mem ? [L('Память'), Fmt.bytes(s.mem)] : null,
+      s.cpuSec ? [L('Время CPU'), Fmt.dur(s.cpuSec)] : null,
+      [L('Перезапусков'), String(s.restarts || 0)],
+      s.version ? [L('Версия'), s.version] : null,
       s.pid ? ['PID', String(s.pid)] : null,
     ].filter(Boolean);
     return h('div', { class: 'card vcard' },
       h('div', { class: 'vhead' },
         h('div', { class: 'vname' }, h('b', null, short(s.unit)), h('span', { class: 'st ' + cls }, h('span', { class: 'dot' }), text),
-          s.restarts > 0 ? h('span', { class: 'badge warn', title: 'systemd перезапускал службу после сбоев' }, `перезапусков: ${s.restarts}`) : null),
+          s.restarts > 0 ? h('span', { class: 'badge warn', title: L('systemd перезапускал службу после сбоев') }, L('перезапусков: {0}', s.restarts)) : null),
         h('div', { class: 'vact' },
-          s.config ? h('button', { class: 'btn sm', type: 'button', title: s.config, onclick: () => openConfig(s.config, s.unit) }, 'Конфиг') : null,
-          h('button', { class: 'btn sm', type: 'button', onclick: () => openLogs(s.unit) }, 'Журнал'),
-          h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (await serviceAction(page, s.unit, 'restart', 'Клиенты VPN на несколько секунд потеряют соединение.')) load(); } }, 'Перезапустить'))),
+          s.config ? h('button', { class: 'btn sm', type: 'button', title: s.config, onclick: () => openConfig(s.config, s.unit) }, L('Конфиг')) : null,
+          h('button', { class: 'btn sm', type: 'button', onclick: () => openLogs(s.unit) }, L('Журнал')),
+          h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (await serviceAction(page, s.unit, 'restart', L('Клиенты VPN на несколько секунд потеряют соединение.'))) load(); } }, L('Перезапустить')))),
       s.description && s.description !== s.unit ? h('div', { class: 'vdesc' }, s.description) : null,
       h('div', { class: 'vstats' }, stats.map(([a, b]) => h('span', null, h('span', { class: 'muted' }, a + ' '), b))),
-      ports.length || eph ? h('div', { class: 'pchips' }, ports.map(portChip), eph ? h('span', { class: 'muted', style: { fontSize: '12px', alignSelf: 'center' } }, `+ ${eph} исходящих UDP-сокетов`) : null) : null,
-      s.config ? h('div', { class: 'vline' }, h('span', { class: 'muted' }, 'Конфиг '), h('span', { class: 'mono' }, s.config)) : null,
-      s.exec ? h('div', { class: 'vline', title: s.exec }, h('span', { class: 'muted' }, 'Команда '), h('span', { class: 'mono' }, s.exec)) : null,
+      ports.length || eph ? h('div', { class: 'pchips' }, ports.map(portChip), eph ? h('span', { class: 'muted', style: { fontSize: '12px', alignSelf: 'center' } }, L('+ {0} исходящих UDP-сокетов', eph)) : null) : null,
+      s.config ? h('div', { class: 'vline' }, h('span', { class: 'muted' }, L('Конфиг ')), h('span', { class: 'mono' }, s.config)) : null,
+      s.exec ? h('div', { class: 'vline', title: s.exec }, h('span', { class: 'muted' }, L('Команда ')), h('span', { class: 'mono' }, s.exec)) : null,
       (s.wg || []).map(wgBlock));
   }
 
@@ -2399,36 +2696,36 @@ function vpnTab(page) {
     const conns = all.reduce((a, s) => a + s.ports.reduce((b, p) => b + (p.conns || 0), 0), 0);
     const ips = all.reduce((a, s) => a + s.ports.reduce((b, p) => b + (p.ips || 0), 0), 0);
     const failed = all.filter(unitBad);
-    k.svc.set(String(running.length), ` из ${all.length}`, failed.length ? `с ошибкой: ${failed.map((s) => short(s.unit)).join(', ')}` : stopped.length ? `остановлены: ${stopped.map((s) => short(s.unit)).join(', ')}` : 'все работают', null);
-    k.conns.set(Fmt.int(conns), '', 'установленные TCP-соединения на портах VPN', null);
-    k.ips.set(Fmt.int(ips), '', 'разные адреса, по каждому порту отдельно', null);
+    k.svc.set(String(running.length), L(' из {0}', all.length), failed.length ? L('с ошибкой: {0}', failed.map((s) => short(s.unit)).join(', ')) : stopped.length ? L('остановлены: {0}', stopped.map((s) => short(s.unit)).join(', ')) : L('все работают'), null);
+    k.conns.set(Fmt.int(conns), '', L('установленные TCP-соединения на портах VPN'), null);
+    k.ips.set(Fmt.int(ips), '', L('разные адреса, по каждому порту отдельно'), null);
     const wg = d.wg || [];
     const wgPeers = wg.reduce((a, w) => a + w.peers, 0), wgActive = wg.reduce((a, w) => a + w.active, 0);
-    k.wg.set(wg.length ? `${wgActive}` : '—', wg.length ? ` из ${wgPeers}` : '', wg.length ? `активных пиров на ${wg.length} ${Fmt.plural(wg.length, 'интерфейсе', 'интерфейсах', 'интерфейсах')}` : 'интерфейсов не найдено', null);
-    upd.textContent = 'обновлено ' + Fmt.clock(d.t, true);
+    k.wg.set(wg.length ? `${wgActive}` : '—', wg.length ? L(' из {0}', wgPeers) : '', wg.length ? L('активных пиров на {0} {1}', wg.length, Fmt.plural(wg.length, 'интерфейсе', 'интерфейсах', 'интерфейсах')) : L('интерфейсов не найдено'), null);
+    upd.textContent = L('обновлено ') + Fmt.clock(d.t, true);
 
     // интерфейсы WireGuard без своей службы (например, поднятые вручную)
     const own = new Set(all.flatMap((s) => (s.wg || []).map((w) => w.name)));
     const loose = wg.filter((w) => !own.has(w.name));
 
     if (!all.length && !loose.length) {
-      listEl.replaceChildren(h('div', { class: 'card empty' }, h('b', null, 'VPN-службы не найдены'),
-        'Панель ищет службы systemd с названиями xray, sing-box, hysteria, AmneziaWG, WireGuard, mtg, OpenVPN и других.'));
+      listEl.replaceChildren(h('div', { class: 'card empty' }, h('b', null, L('VPN-службы не найдены')),
+        L('Панель ищет службы systemd с названиями xray, sing-box, hysteria, AmneziaWG, WireGuard, mtg, OpenVPN и других.')));
       stoppedEl.replaceChildren();
       return;
     }
     listEl.replaceChildren(...running.map(card), ...failed.map(card),
-      loose.length ? h('div', { class: 'card vcard' }, h('div', { class: 'vhead' }, h('div', { class: 'vname' }, h('b', null, 'Интерфейсы WireGuard'))), loose.map(wgBlock)) : '');
+      loose.length ? h('div', { class: 'card vcard' }, h('div', { class: 'vhead' }, h('div', { class: 'vname' }, h('b', null, L('Интерфейсы WireGuard')))), loose.map(wgBlock)) : '');
     const idle = stopped.filter((s) => !unitBad(s));
     stoppedEl.replaceChildren(idle.length ? h('div', null,
-      h('div', { class: 'section-title' }, `Остановлены (${idle.length})`),
+      h('div', { class: 'section-title' }, L('Остановлены ({0})', idle.length)),
       h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('tbody', null, idle.map((s) => h('tr', null,
         h('td', { class: 'name-cell' }, h('b', null, short(s.unit)), h('div', { class: 'desc' }, s.description || NB)),
-        h('td', null, h('span', { class: 'st idle' }, h('span', { class: 'dot' }), ENABLED_TEXT[s.enabled] ? `автозапуск ${ENABLED_TEXT[s.enabled]}` : 'остановлена')),
+        h('td', null, h('span', { class: 'st idle' }, h('span', { class: 'dot' }), ENABLED_TEXT[s.enabled] ? L('автозапуск {0}', ENABLED_TEXT[s.enabled]) : L('остановлена'))),
         h('td', { class: 'actions' },
-          s.config ? h('button', { class: 'btn sm', type: 'button', onclick: () => openConfig(s.config) }, 'Конфиг') : null,
-          h('button', { class: 'btn sm', type: 'button', onclick: () => openLogs(s.unit) }, 'Журнал'),
-          h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (await serviceAction(page, s.unit, 'start')) load(); } }, 'Запустить')))))))) : '');
+          s.config ? h('button', { class: 'btn sm', type: 'button', onclick: () => openConfig(s.config) }, L('Конфиг')) : null,
+          h('button', { class: 'btn sm', type: 'button', onclick: () => openLogs(s.unit) }, L('Журнал')),
+          h('button', { class: 'btn sm', type: 'button', onclick: async () => { if (await serviceAction(page, s.unit, 'start')) load(); } }, L('Запустить'))))))))) : '');
   }
 
   load();
@@ -2444,22 +2741,22 @@ function logsTab(page) {
   const errBox = h('div');
   const count = h('span', { class: 'count' });
   const dl = h('datalist', { id: 'units-' + id.replace(/[^a-z0-9]/gi, '') });
-  const unitIn = h('input', { class: 'input', style: { width: '220px' }, placeholder: 'Все службы', list: dl.id, value: st.unit.replace(/\.service$/, '') });
+  const unitIn = h('input', { class: 'input', style: { width: '220px' }, placeholder: L('Все службы'), list: dl.id, value: st.unit.replace(/\.service$/, '') });
   unitIn.addEventListener('change', () => { st.unit = unitIn.value.trim(); reload(); });
   const prioSel = h('select', { class: 'input', onchange: (e) => { st.prio = e.target.value; reload(); } },
-    h('option', { value: '' }, 'Все уровни'), h('option', { value: '4' }, 'Предупреждения и выше'), h('option', { value: '3' }, 'Только ошибки'));
+    h('option', { value: '' }, L('Все уровни')), h('option', { value: '4' }, L('Предупреждения и выше')), h('option', { value: '3' }, L('Только ошибки')));
   const linesSel = h('select', { class: 'input', onchange: (e) => { st.lines = +e.target.value; reload(); } },
-    [200, 300, 1000, 3000].map((n) => h('option', { value: String(n), selected: n === st.lines }, `${n} строк`)));
+    [200, 300, 1000, 3000].map((n) => h('option', { value: String(n), selected: n === st.lines }, L('{0} строк', n))));
   const el = h('div', null,
     h('div', { class: 'toolbar' },
       unitIn, dl, prioSel, linesSel,
-      h('input', { class: 'input', type: 'search', placeholder: 'Фильтр по тексту', style: { width: '200px' }, oninput: (e) => { st.q = e.target.value.toLowerCase(); render(); } }),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { st.follow = e.target.checked; schedule(); } }), 'Следить'),
+      h('input', { class: 'input', type: 'search', placeholder: L('Фильтр по тексту'), style: { width: '200px' }, oninput: (e) => { st.q = e.target.value.toLowerCase(); render(); } }),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { st.follow = e.target.checked; schedule(); } }), L('Следить')),
       h('span', { class: 'grow' }), count,
-      h('button', { class: 'btn sm', type: 'button', onclick: reload }, icon('refresh'), 'Обновить')),
+      h('button', { class: 'btn sm', type: 'button', onclick: reload }, icon('refresh'), L('Обновить'))),
     errBox, box);
 
-  const fillUnits = (list) => dl.replaceChildren(h('option', { value: 'kernel' }, 'Сообщения ядра'), ...list.map((s) => h('option', { value: s.unit.replace(/\.service$/, '') })));
+  const fillUnits = (list) => dl.replaceChildren(h('option', { value: 'kernel' }, L('Сообщения ядра')), ...list.map((s) => h('option', { value: s.unit.replace(/\.service$/, '') })));
   if (page.services) fillUnits(page.services);
   else api(`/servers/${encodeURIComponent(id)}/services`).then((d) => { page.services = d.services || []; fillUnits(page.services); }, () => {});
 
@@ -2468,7 +2765,7 @@ function logsTab(page) {
     if (st.follow && !st.dead) st.timer = setTimeout(() => load(true), 2500);
   }
 
-  function reload() { st.entries = []; st.cursor = ''; box.replaceChildren(h('div', { class: 'empty' }, h('span', { class: 'spinner' }), NB + ' Загрузка журнала…')); load(false); }
+  function reload() { st.entries = []; st.cursor = ''; box.replaceChildren(h('div', { class: 'empty' }, h('span', { class: 'spinner' }), NB + L(' Загрузка журнала…'))); load(false); }
 
   async function load(more) {
     if (st.busy) return;
@@ -2495,27 +2792,27 @@ function logsTab(page) {
   }
 
   function badge(p) {
-    if (p <= 2) return h('span', { class: 'badge crit' }, 'крит.');
-    if (p === 3) return h('span', { class: 'badge crit' }, 'ошибка');
-    if (p === 4) return h('span', { class: 'badge warn' }, 'внимание');
+    if (p <= 2) return h('span', { class: 'badge crit' }, L('крит.'));
+    if (p === 3) return h('span', { class: 'badge crit' }, L('ошибка'));
+    if (p === 4) return h('span', { class: 'badge warn' }, L('внимание'));
     return h('span');
   }
 
   function render(scroll) {
     let list = st.entries;
     if (st.q) list = list.filter((e) => e.m.toLowerCase().includes(st.q) || (e.id || '').toLowerCase().includes(st.q));
-    count.textContent = `${list.length} записей`;
+    count.textContent = L('{0} записей', list.length);
     const frag = document.createDocumentFragment();
     for (const e of list) {
       if (st.plain) { frag.append(h('div', { class: 'log-plain' }, e.m)); continue; }
       frag.append(h('div', { class: 'log-line p' + e.p },
-        h('span', { class: 'log-time', title: new Date(e.t).toLocaleString('ru-RU') }, Fmt.dateTime(e.t)),
+        h('span', { class: 'log-time', title: new Date(e.t).toLocaleString(I18N.locale) }, Fmt.dateTime(e.t)),
         badge(e.p),
         h('span', { class: 'log-id', title: (e.u || '') + (e.pid ? ' · PID ' + e.pid : '') }, e.id || e.u || ''),
         h('span', { class: 'log-msg' }, e.m)));
     }
     box.replaceChildren(frag);
-    if (!list.length) box.append(h('div', { class: 'empty' }, 'Записей нет'));
+    if (!list.length) box.append(h('div', { class: 'empty' }, L('Записей нет')));
     if (scroll) box.scrollTop = box.scrollHeight;
   }
 
@@ -2527,7 +2824,7 @@ function logsTab(page) {
 function networkTab(page) {
   const id = page.id;
   const st = { timer: 0, dead: false, busy: false };
-  const k = { rx: kpiTile('Входящий трафик'), tx: kpiTile('Исходящий трафик'), est: kpiTile('Установленные TCP'), peers: kpiTile('Уникальные адреса') };
+  const k = { rx: kpiTile(L('Входящий трафик')), tx: kpiTile(L('Исходящий трафик')), est: kpiTile(L('Установленные TCP')), peers: kpiTile(L('Уникальные адреса')) };
   const inEl = h('div', { class: 'list-bars' });
   const outEl = h('div', { class: 'list-bars' });
   const peersEl = h('div', { class: 'list-bars' });
@@ -2538,14 +2835,14 @@ function networkTab(page) {
     h('div', { class: 'grid kpis' }, Object.values(k).map((t) => t.el)),
     errBox,
     h('div', { class: 'grid three' },
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Входящие подключения'), h('div', { class: 'card-sub' }, 'по локальному порту'))), inEl),
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Исходящие подключения'), h('div', { class: 'card-sub' }, 'по удалённому порту'))), outEl),
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Активные адреса'), h('div', { class: 'card-sub' }, 'больше всего TCP-соединений'))), peersEl)),
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Входящие подключения')), h('div', { class: 'card-sub' }, L('по локальному порту')))), inEl),
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Исходящие подключения')), h('div', { class: 'card-sub' }, L('по удалённому порту')))), outEl),
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Активные адреса')), h('div', { class: 'card-sub' }, L('больше всего TCP-соединений')))), peersEl)),
     h('div', { class: 'grid two', style: { marginTop: '16px' } },
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, 'Открытые порты'), h('div', { class: 'right' }, h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), 'Обновить'))),
-        h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'Протокол'), h('th', null, 'Адрес'), h('th', { class: 'num' }, 'Порт'), h('th', null, 'Процесс'))), listenBody))),
-      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, 'Сетевые интерфейсы')),
-        h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, 'Интерфейс'), h('th', { class: 'num' }, '↓'), h('th', { class: 'num' }, '↑'), h('th', { class: 'num' }, 'Всего ↓ / ↑'))), ifBody)))));
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, L('Открытые порты')), h('div', { class: 'right' }, h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), L('Обновить')))),
+        h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, L('Протокол')), h('th', null, L('Адрес')), h('th', { class: 'num' }, L('Порт')), h('th', null, L('Процесс')))), listenBody))),
+      h('div', { class: 'card' }, h('div', { class: 'card-head' }, h('div', { class: 'card-title' }, L('Сетевые интерфейсы'))),
+        h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' }, h('thead', null, h('tr', null, h('th', null, L('Интерфейс')), h('th', { class: 'num' }, '↓'), h('th', { class: 'num' }, '↑'), h('th', { class: 'num' }, L('Всего ↓ / ↑')))), ifBody)))));
 
   function bars(target, list, fmtKey) {
     const max = Math.max(1, ...list.map((x) => x.count));
@@ -2554,13 +2851,13 @@ function networkTab(page) {
       m.el.classList.remove('warn', 'crit');
       return h('div', { class: 'lb' }, h('span', { class: 'lb-k' }, fmtKey(x.key)), h('span', { class: 'lb-v' }, Fmt.int(x.count)), m.el);
     }));
-    if (!list.length) target.replaceChildren(h('div', { class: 'muted' }, 'нет соединений'));
+    if (!list.length) target.replaceChildren(h('div', { class: 'muted' }, L('нет соединений')));
   }
 
   function live(m) {
     if (!m) return;
-    k.rx.set(Fmt.bits(m.netRx * 8), '', 'сейчас', null);
-    k.tx.set(Fmt.bits(m.netTx * 8), '', 'сейчас', null);
+    k.rx.set(Fmt.bits(m.netRx * 8), '', L('сейчас'), null);
+    k.tx.set(Fmt.bits(m.netTx * 8), '', L('сейчас'), null);
     renderIfaces(ifBody, m);
   }
 
@@ -2572,15 +2869,15 @@ function networkTab(page) {
       const d = await api(`/servers/${encodeURIComponent(id)}/network`);
       if (st.dead) return;
       errBox.replaceChildren();
-      k.est.set(Fmt.int(d.established), '', `входящих ${Fmt.int(d.inbound)} · исходящих ${Fmt.int(d.outbound)}`, null);
-      k.peers.set(Fmt.int(d.uniquePeers), '', 'IP-адресов с активными TCP', null);
-      bars(inEl, d.localPorts || [], (p) => 'порт ' + p);
-      bars(outEl, d.remotePorts || [], (p) => 'порт ' + p);
+      k.est.set(Fmt.int(d.established), '', L('входящих {0} · исходящих {1}', Fmt.int(d.inbound), Fmt.int(d.outbound)), null);
+      k.peers.set(Fmt.int(d.uniquePeers), '', L('IP-адресов с активными TCP'), null);
+      bars(inEl, d.localPorts || [], (p) => L('порт ') + p);
+      bars(outEl, d.remotePorts || [], (p) => L('порт ') + p);
       bars(peersEl, d.peers || [], (p) => p);
       listenBody.replaceChildren(...(d.listen || []).map((l) => h('tr', null,
         h('td', null, l.proto), h('td', { class: 'mono' }, l.addr), h('td', { class: 'num' }, l.port),
         h('td', { class: 'ink2' }, (l.procs || []).join(', ') || '—'))));
-      if (!(d.listen || []).length) listenBody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'muted' }, 'нет данных (нужны права root или sudo)')));
+      if (!(d.listen || []).length) listenBody.replaceChildren(h('tr', null, h('td', { colspan: '4', class: 'muted' }, L('нет данных (нужны права root или sudo)'))));
     } catch (e) {
       errBox.replaceChildren(h('div', { class: 'alert bad', style: { marginBottom: '12px' } }, e.message));
     }
@@ -2600,10 +2897,10 @@ function dockerTab(page) {
   const tbody = h('tbody');
   const errBox = h('div');
   const el = h('div', null,
-    h('div', { class: 'toolbar' }, h('span', { class: 'grow' }), h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), 'Обновить')),
+    h('div', { class: 'toolbar' }, h('span', { class: 'grow' }), h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), L('Обновить'))),
     errBox,
     h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl' },
-      h('thead', null, h('tr', null, h('th', null, 'Контейнер'), h('th', null, 'Состояние'), h('th', { class: 'num' }, 'CPU'), h('th', { class: 'num' }, 'Память'), h('th', null, 'Порты'), h('th'))), tbody)));
+      h('thead', null, h('tr', null, h('th', null, L('Контейнер')), h('th', null, L('Состояние')), h('th', { class: 'num' }, 'CPU'), h('th', { class: 'num' }, L('Память')), h('th', null, L('Порты')), h('th'))), tbody)));
 
   async function load() {
     if (st.busy) return;
@@ -2627,12 +2924,12 @@ function dockerTab(page) {
           h('td', { class: 'num' }, s.MemUsage ? s.MemUsage.split('/')[0].trim() : '—'),
           h('td', { class: 'mono', style: { fontSize: '12px', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: c.Ports }, c.Ports || '—'),
           h('td', { class: 'actions' },
-            h('button', { class: 'btn sm', type: 'button', onclick: () => logs(name) }, 'Логи'),
-            h('button', { class: 'btn sm', type: 'button', onclick: () => act(name, 'restart') }, 'Перезапустить'),
-            running ? h('button', { class: 'btn sm', type: 'button', onclick: () => act(name, 'stop') }, 'Остановить')
-              : h('button', { class: 'btn sm', type: 'button', onclick: () => act(name, 'start') }, 'Запустить')));
+            h('button', { class: 'btn sm', type: 'button', onclick: () => logs(name) }, L('Логи')),
+            h('button', { class: 'btn sm', type: 'button', onclick: () => act(name, 'restart') }, L('Перезапустить')),
+            running ? h('button', { class: 'btn sm', type: 'button', onclick: () => act(name, 'stop') }, L('Остановить'))
+              : h('button', { class: 'btn sm', type: 'button', onclick: () => act(name, 'start') }, L('Запустить'))));
       }));
-      if (!(d.containers || []).length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '6', class: 'empty' }, 'Контейнеров нет')));
+      if (!(d.containers || []).length) tbody.replaceChildren(h('tr', null, h('td', { colspan: '6', class: 'empty' }, L('Контейнеров нет'))));
     } catch (e) {
       errBox.replaceChildren(h('div', { class: 'alert bad', style: { marginBottom: '12px' } }, e.message));
     }
@@ -2642,24 +2939,24 @@ function dockerTab(page) {
 
   async function act(name, action) {
     if (action !== 'start') {
-      const ok = await confirmDialog({ title: `${action === 'stop' ? 'Остановить' : 'Перезапустить'} контейнер «${name}»?`, ok: action === 'stop' ? 'Остановить' : 'Перезапустить', danger: action === 'stop' });
+      const ok = await confirmDialog({ title: L('{0} контейнер «{1}»?', action === 'stop' ? L('Остановить') : L('Перезапустить'), name), ok: action === 'stop' ? L('Остановить') : L('Перезапустить'), danger: action === 'stop' });
       if (!ok) return;
     }
     try {
       const r = await api(`/servers/${encodeURIComponent(id)}/docker/action`, { method: 'POST', body: { container: name, action } });
-      r.ok ? toast(`Контейнер ${name}: готово`) : toast(`Контейнер ${name}: ошибка`, 'bad', r.error);
+      r.ok ? toast(L('Контейнер {0}: готово', name)) : toast(L('Контейнер {0}: ошибка', name), 'bad', r.error);
     } catch (e) { toast(e.message, 'bad'); }
     load();
   }
 
   async function logs(name) {
-    const pre = h('pre', { class: 'pre' }, 'Загрузка…');
-    const closeBtn = h('button', { class: 'btn', type: 'button' }, 'Закрыть');
-    const md = modal({ title: `Логи контейнера ${name}`, lead: 'Последние 500 строк', body: pre, wide: true, foot: [closeBtn] });
+    const pre = h('pre', { class: 'pre' }, L('Загрузка…'));
+    const closeBtn = h('button', { class: 'btn', type: 'button' }, L('Закрыть'));
+    const md = modal({ title: L('Логи контейнера {0}', name), lead: L('Последние 500 строк'), body: pre, wide: true, foot: [closeBtn] });
     closeBtn.addEventListener('click', () => md.close());
     try {
       const d = await api(`/servers/${encodeURIComponent(id)}/docker/logs?container=${encodeURIComponent(name)}`);
-      pre.textContent = d.output || '(пусто)';
+      pre.textContent = d.output || L('(пусто)');
       pre.scrollTop = pre.scrollHeight;
     } catch (e) { pre.textContent = e.message; }
   }
@@ -2673,17 +2970,17 @@ const QUICK = ['uptime', 'free -h', 'df -h', 'systemctl --failed', 'top -bn1 | h
 
 /* ---------- вкладка «Система»: обновления и безопасность ---------- */
 const SSHD_ROWS = [
-  ['port', 'Порт'], ['listenaddress', 'Адреса'], ['permitrootlogin', 'Вход под root'], ['passwordauthentication', 'Вход по паролю'],
-  ['kbdinteractiveauthentication', 'Интерактивный вход'], ['pubkeyauthentication', 'Вход по ключу'], ['permitemptypasswords', 'Пустые пароли'],
-  ['maxauthtries', 'Попыток за подключение'], ['x11forwarding', 'X11 forwarding'], ['allowusers', 'Разрешённые пользователи'], ['allowgroups', 'Разрешённые группы'],
+  ['port', L('Порт')], ['listenaddress', L('Адреса')], ['permitrootlogin', L('Вход под root')], ['passwordauthentication', L('Вход по паролю')],
+  ['kbdinteractiveauthentication', L('Интерактивный вход')], ['pubkeyauthentication', L('Вход по ключу')], ['permitemptypasswords', L('Пустые пароли')],
+  ['maxauthtries', L('Попыток за подключение')], ['x11forwarding', 'X11 forwarding'], ['allowusers', L('Разрешённые пользователи')], ['allowgroups', L('Разрешённые группы')],
 ];
-const SSHD_VAL = { yes: 'да', no: 'нет', 'prohibit-password': 'только по ключу', 'without-password': 'только по ключу', 'forced-commands-only': 'только заданные команды' };
+const SSHD_VAL = { yes: L('да'), no: L('нет'), 'prohibit-password': L('только по ключу'), 'without-password': L('только по ключу'), 'forced-commands-only': L('только заданные команды') };
 
 function sshdRisk(k, v) {
-  if (k === 'permitemptypasswords' && v === 'yes') return ['bad', 'опасно'];
-  if (k === 'passwordauthentication' && v === 'yes') return ['warn', 'лучше выключить: подбор паролей'];
-  if (k === 'kbdinteractiveauthentication' && v === 'yes') return ['warn', 'может принимать пароли'];
-  if (k === 'permitrootlogin' && v === 'yes') return ['warn', 'root может входить по паролю'];
+  if (k === 'permitemptypasswords' && v === 'yes') return ['bad', L('опасно')];
+  if (k === 'passwordauthentication' && v === 'yes') return ['warn', L('лучше выключить: подбор паролей')];
+  if (k === 'kbdinteractiveauthentication' && v === 'yes') return ['warn', L('может принимать пароли')];
+  if (k === 'permitrootlogin' && v === 'yes') return ['warn', L('root может входить по паролю')];
   return null;
 }
 
@@ -2691,11 +2988,11 @@ function systemTab(page) {
   const id = page.id;
   const st = { d: null, busy: false, dead: false, job: '', jobT: 0, showAll: false };
   const errBox = h('div');
-  const body = h('div', null, h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), NB + ' Собираю сведения о системе…'));
+  const body = h('div', null, h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), NB + L(' Собираю сведения о системе…')));
   const jobBox = h('div');
   const el = h('div', null,
-    h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, 'Обновления пакетов, настройки SSH, попытки входа, fail2ban и ufw'), h('span', { class: 'grow' }),
-      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), 'Обновить')),
+    h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, L('Обновления пакетов, настройки SSH, попытки входа, fail2ban и ufw')), h('span', { class: 'grow' }),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => load() }, icon('refresh'), L('Обновить'))),
     errBox, jobBox, body);
 
   async function load() {
@@ -2704,7 +3001,7 @@ function systemTab(page) {
     try {
       st.d = await api(`/servers/${encodeURIComponent(id)}/system`);
       errBox.replaceChildren(st.d.privileged ? '' : h('div', { class: 'alert warn', style: { marginBottom: '12px' } }, icon('warn'),
-        h('div', null, 'Нет прав root или sudo без пароля — часть сведений (sshd, fail2ban, журнал входов) недоступна, обновлять пакеты нельзя.')));
+        h('div', null, L('Нет прав root или sudo без пароля — часть сведений (sshd, fail2ban, журнал входов) недоступна, обновлять пакеты нельзя.'))));
       render();
       if (st.d.job && !st.job) watchJob(st.d.job);
     } catch (e) {
@@ -2714,41 +3011,41 @@ function systemTab(page) {
     st.busy = false;
   }
 
-  const ago = (ms) => (ms ? Fmt.dur((Date.now() - ms) / 1000) + ' назад' : 'неизвестно');
+  const ago = (ms) => (ms ? Fmt.dur((Date.now() - ms) / 1000) + L(' назад') : L('неизвестно'));
 
   function updatesCard(d) {
-    if (!d.apt) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Обновления'), h('div', { class: 'muted', style: { marginTop: '8px' } }, 'На сервере нет apt — обновления этой системы панель не показывает.'));
+    if (!d.apt) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, L('Обновления')), h('div', { class: 'muted', style: { marginTop: '8px' } }, L('На сервере нет apt — обновления этой системы панель не показывает.')));
     const n = d.upgrades.length;
     const list = st.showAll ? d.upgrades : d.upgrades.slice(0, 12);
     const auto = d.autoUpgrade && d.unattended && d.unattended.startsWith('enabled');
     return h('div', { class: 'card' },
       h('div', { class: 'card-head' },
-        h('div', null, h('div', { class: 'card-title' }, 'Обновления пакетов'),
-          h('div', { class: 'card-sub' }, `список пакетов обновлён ${ago(d.lastUpdate)} · последняя установка ${ago(d.lastUpgrade)}`)),
+        h('div', null, h('div', { class: 'card-title' }, L('Обновления пакетов')),
+          h('div', { class: 'card-sub' }, L('список пакетов обновлён {0} · последняя установка {1}', ago(d.lastUpdate), ago(d.lastUpgrade)))),
         h('div', { class: 'vact' },
-          h('button', { class: 'btn sm', type: 'button', disabled: !d.privileged || !!st.job, onclick: () => startJob('update') }, 'Проверить обновления'),
-          h('button', { class: 'btn sm primary', type: 'button', disabled: !d.privileged || !!st.job || !n, onclick: () => startJob('upgrade') }, 'Установить обновления'))),
+          h('button', { class: 'btn sm', type: 'button', disabled: !d.privileged || !!st.job, onclick: () => startJob('update') }, L('Проверить обновления')),
+          h('button', { class: 'btn sm primary', type: 'button', disabled: !d.privileged || !!st.job || !n, onclick: () => startJob('upgrade') }, L('Установить обновления')))),
       h('div', { class: 'sys-kpis' },
-        h('div', null, h('div', { class: 'kpi-value' }, String(n)), h('div', { class: 'kpi-sub' }, n ? Fmt.plural(n, 'пакет можно обновить', 'пакета можно обновить', 'пакетов можно обновить') : 'всё обновлено')),
-        h('div', null, h('div', { class: 'kpi-value' + (d.security ? ' crit-ink' : '') }, String(d.security)), h('div', { class: 'kpi-sub' }, 'из них — исправления безопасности')),
-        h('div', null, h('div', { class: 'kpi-value small' }, h('span', { class: 'st ' + (auto ? 'good' : 'warn') }, h('span', { class: 'dot' }), auto ? 'включены' : 'выключены')),
-          h('div', { class: 'kpi-sub' }, 'автоматические обновления безопасности'))),
+        h('div', null, h('div', { class: 'kpi-value' }, String(n)), h('div', { class: 'kpi-sub' }, n ? Fmt.plural(n, 'пакет можно обновить', 'пакета можно обновить', 'пакетов можно обновить') : L('всё обновлено'))),
+        h('div', null, h('div', { class: 'kpi-value' + (d.security ? ' crit-ink' : '') }, String(d.security)), h('div', { class: 'kpi-sub' }, L('из них — исправления безопасности'))),
+        h('div', null, h('div', { class: 'kpi-value small' }, h('span', { class: 'st ' + (auto ? 'good' : 'warn') }, h('span', { class: 'dot' }), auto ? L('включены') : L('выключены'))),
+          h('div', { class: 'kpi-sub' }, L('автоматические обновления безопасности')))),
       d.reboot ? h('div', { class: 'alert warn', style: { alignItems: 'center' } }, icon('warn'),
-        h('div', { style: { flex: 1 } }, 'Нужна перезагрузка, чтобы применились обновления' + (d.rebootPkgs && d.rebootPkgs.length ? ': ' + d.rebootPkgs.slice(0, 6).join(', ') + (d.rebootPkgs.length > 6 ? ` и ещё ${d.rebootPkgs.length - 6}` : '') : '') + '.'),
-        h('button', { class: 'btn sm danger', type: 'button', onclick: () => rebootDialog(page.srv) }, 'Перезагрузить…')) : null,
+        h('div', { style: { flex: 1 } }, L('Нужна перезагрузка, чтобы применились обновления') + (d.rebootPkgs && d.rebootPkgs.length ? ': ' + d.rebootPkgs.slice(0, 6).join(', ') + (d.rebootPkgs.length > 6 ? L(' и ещё {0}', d.rebootPkgs.length - 6) : '') : '') + '.'),
+        h('button', { class: 'btn sm danger', type: 'button', onclick: () => rebootDialog(page.srv) }, L('Перезагрузить…'))) : null,
       n ? h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl compact' },
-        h('thead', null, h('tr', null, h('th', null, 'Пакет'), h('th', null, 'Сейчас'), h('th', null, 'Новая версия'), h('th'))),
+        h('thead', null, h('tr', null, h('th', null, L('Пакет')), h('th', null, L('Сейчас')), h('th', null, L('Новая версия')), h('th'))),
         h('tbody', null, list.map((p) => h('tr', null,
           h('td', null, h('b', null, p.name)), h('td', { class: 'mono muted' }, p.from), h('td', { class: 'mono' }, p.to),
-          h('td', null, p.security ? h('span', { class: 'badge crit' }, 'безопасность') : null)))))) : null,
-      n > 12 ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { st.showAll = !st.showAll; render(); } }, st.showAll ? 'Свернуть' : `Показать все (${n})`) : null);
+          h('td', null, p.security ? h('span', { class: 'badge crit' }, L('безопасность')) : null)))))) : null,
+      n > 12 ? h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { st.showAll = !st.showAll; render(); } }, st.showAll ? L('Свернуть') : L('Показать все ({0})', n)) : null);
   }
 
   function sshCard(d) {
     const keys = SSHD_ROWS.filter(([k]) => d.sshd[k]);
-    if (!keys.length) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'SSH-сервер'), h('div', { class: 'muted', style: { marginTop: '8px' } }, 'Настройки sshd прочитать не удалось (нужны права root).'));
+    if (!keys.length) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, L('SSH-сервер')), h('div', { class: 'muted', style: { marginTop: '8px' } }, L('Настройки sshd прочитать не удалось (нужны права root).')));
     return h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'SSH-сервер'), h('div', { class: 'card-sub' }, 'действующие настройки (sshd -T)'))),
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('SSH-сервер')), h('div', { class: 'card-sub' }, L('действующие настройки (sshd -T)')))),
       h('dl', { class: 'kv sys-kv' }, keys.flatMap(([k, label]) => {
         const v = d.sshd[k];
         const risk = sshdRisk(k, v);
@@ -2761,36 +3058,36 @@ function systemTab(page) {
       h('span', { class: 'bar' }, h('i', { style: { width: Math.max(2, (it.n / max) * 100) + '%' } })), h('span', { class: 'bar-n' }, Fmt.int(it.n)));
     const maxIP = Math.max(1, ...d.authIps.map((x) => x.n)), maxU = Math.max(1, ...d.authUsers.map((x) => x.n));
     return h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Входы по SSH за 24 часа'),
-        h('div', { class: 'card-sub' }, `неудачных попыток ${Fmt.int(d.authFail)} · успешных входов ${Fmt.int(d.authOk)}`))),
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Входы по SSH за 24 часа')),
+        h('div', { class: 'card-sub' }, L('неудачных попыток {0} · успешных входов {1}', Fmt.int(d.authFail), Fmt.int(d.authOk))))),
       d.authFail ? h('div', { class: 'grid two', style: { gap: '20px' } },
-        h('div', null, h('div', { class: 'mini-title' }, 'Чаще всего с адресов'), d.authIps.map((x) => row(x, maxIP))),
-        h('div', null, h('div', { class: 'mini-title' }, 'Пробовали пользователей'), d.authUsers.map((x) => row(x, maxU)))) : h('div', { class: 'muted' }, 'Неудачных попыток не было.'),
-      d.accepted.length ? h('div', { style: { marginTop: '14px' } }, h('div', { class: 'mini-title' }, 'Успешные входы (последние)'),
+        h('div', null, h('div', { class: 'mini-title' }, L('Чаще всего с адресов')), d.authIps.map((x) => row(x, maxIP))),
+        h('div', null, h('div', { class: 'mini-title' }, L('Пробовали пользователей')), d.authUsers.map((x) => row(x, maxU)))) : h('div', { class: 'muted' }, L('Неудачных попыток не было.')),
+      d.accepted.length ? h('div', { style: { marginTop: '14px' } }, h('div', { class: 'mini-title' }, L('Успешные входы (последние)')),
         h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl compact' }, h('tbody', null, d.accepted.map((a) => h('tr', null,
-          h('td', null, h('b', null, a.user)), h('td', { class: 'mono' }, a.ip), h('td', { class: 'muted' }, a.method === 'publickey' ? 'по ключу' : a.method === 'password' ? 'по паролю' : a.method),
-          h('td', { class: 'num muted' }, a.n > 1 ? `${a.n} раз` : ''),
-          h('td', { class: 'muted nowrap' }, a.time ? 'последний ' + Fmt.dateTime(Date.parse(a.time), false) : ''))))))) : null);
+          h('td', null, h('b', null, a.user)), h('td', { class: 'mono' }, a.ip), h('td', { class: 'muted' }, a.method === 'publickey' ? L('по ключу') : a.method === 'password' ? L('по паролю') : a.method),
+          h('td', { class: 'num muted' }, a.n > 1 ? L('{0} раз', a.n) : ''),
+          h('td', { class: 'muted nowrap' }, a.time ? L('последний ') + Fmt.dateTime(Date.parse(a.time), false) : ''))))))) : null);
   }
 
   function f2bCard(d) {
-    if (!d.f2b) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'fail2ban'), h('div', { class: 'muted', style: { marginTop: '8px' } }, 'Не установлен. Он блокирует адреса, с которых подбирают пароли (apt install fail2ban).'));
+    if (!d.f2b) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'fail2ban'), h('div', { class: 'muted', style: { marginTop: '8px' } }, L('Не установлен. Он блокирует адреса, с которых подбирают пароли (apt install fail2ban).')));
     return h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'fail2ban'),
-        h('div', { class: 'card-sub' }, h('span', { class: 'st ' + (d.f2bActive === 'active' ? 'good' : 'bad') }, h('span', { class: 'dot' }), d.f2bActive === 'active' ? 'работает' : (d.f2bActive || 'не запущен'))))),
+        h('div', { class: 'card-sub' }, h('span', { class: 'st ' + (d.f2bActive === 'active' ? 'good' : 'bad') }, h('span', { class: 'dot' }), d.f2bActive === 'active' ? L('работает') : (d.f2bActive || L('не запущен')))))),
       d.jails.length ? d.jails.map((j) => h('div', { class: 'jail' },
-        h('div', { class: 'jail-head' }, h('b', null, j.name), h('span', { class: 'muted' }, `заблокировано сейчас ${j.banned} · всего ${j.totalBanned} · ошибок сейчас ${j.failed}`)),
+        h('div', { class: 'jail-head' }, h('b', null, j.name), h('span', { class: 'muted' }, L('заблокировано сейчас {0} · всего {1} · ошибок сейчас {2}', j.banned, j.totalBanned, j.failed))),
         j.ips.length ? h('div', { class: 'pchips' }, j.ips.slice(0, 60).map((ip) => h('span', { class: 'pchip' }, h('span', { class: 'mono' }, ip),
-          h('button', { class: 'linkbtn', type: 'button', title: 'Разблокировать', onclick: () => unban(j.name, ip) }, 'разбан'))),
-        j.ips.length > 60 ? h('span', { class: 'muted', style: { fontSize: '12px' } }, `и ещё ${j.ips.length - 60}`) : null) : null)) : h('div', { class: 'muted' }, d.privileged ? 'Активных jail нет.' : 'Нужны права root.'));
+          h('button', { class: 'linkbtn', type: 'button', title: L('Разблокировать'), onclick: () => unban(j.name, ip) }, L('разбан')))),
+        j.ips.length > 60 ? h('span', { class: 'muted', style: { fontSize: '12px' } }, L('и ещё {0}', j.ips.length - 60)) : null) : null)) : h('div', { class: 'muted' }, d.privileged ? L('Активных jail нет.') : L('Нужны права root.')));
   }
 
   function fwCard(d) {
-    if (!d.ufw) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, 'Файрвол ufw'), h('div', { class: 'muted', style: { marginTop: '8px' } }, 'ufw не установлен (правила nftables/iptables панель не разбирает).'));
+    if (!d.ufw) return h('div', { class: 'card' }, h('div', { class: 'card-title' }, L('Файрвол ufw')), h('div', { class: 'muted', style: { marginTop: '8px' } }, L('ufw не установлен (правила nftables/iptables панель не разбирает).')));
     const on = d.ufwStatus === 'active';
     return h('div', { class: 'card' },
-      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, 'Файрвол ufw'),
-        h('div', { class: 'card-sub' }, h('span', { class: 'st ' + (on ? 'good' : 'idle') }, h('span', { class: 'dot' }), on ? 'включён' : d.ufwStatus === 'inactive' ? 'выключен' : (d.ufwStatus || 'нет данных'))))),
+      h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Файрвол ufw')),
+        h('div', { class: 'card-sub' }, h('span', { class: 'st ' + (on ? 'good' : 'idle') }, h('span', { class: 'dot' }), on ? L('включён') : d.ufwStatus === 'inactive' ? L('выключен') : (d.ufwStatus || L('нет данных')))))),
       on && d.ufwText ? h('pre', { class: 'pre', style: { maxHeight: '300px' } }, d.ufwText) : null);
   }
 
@@ -2803,11 +3100,11 @@ function systemTab(page) {
   }
 
   async function unban(jail, ip) {
-    const ok = await confirmDialog({ title: `Разблокировать ${ip}?`, text: `fail2ban, jail «${jail}».`, ok: 'Разблокировать' });
+    const ok = await confirmDialog({ title: L('Разблокировать {0}?', ip), text: `fail2ban, jail «${jail}».`, ok: L('Разблокировать') });
     if (!ok) return;
     try {
       const r = await api(`/servers/${encodeURIComponent(id)}/system/unban`, { method: 'POST', body: { jail, ip } });
-      if (r.ok) toast(`${ip} разблокирован`); else toast('Не получилось', 'bad', r.error);
+      if (r.ok) toast(L('{0} разблокирован', ip)); else toast(L('Не получилось'), 'bad', r.error);
     } catch (e) { toast(e.message, 'bad'); }
     load();
   }
@@ -2816,25 +3113,25 @@ function systemTab(page) {
     if (action === 'upgrade') {
       const vpn = (page.srv.units || []).filter((u) => u.vpn && u.active === 'active').length;
       const ok = await confirmDialog({
-        title: `Установить обновления на ${page.srv.name}?`,
-        text: 'apt-get update и apt-get upgrade. Конфигурационные файлы, которые вы меняли, сохранятся; удалять пакеты apt не будет. Задание работает на сервере само, его можно не ждать.',
-        warn: vpn ? 'Обновление может перезапустить службы, в том числе VPN — клиенты на несколько секунд потеряют связь.' : null,
-        ok: 'Установить',
+        title: L('Установить обновления на {0}?', page.srv.name),
+        text: L('apt-get update и apt-get upgrade. Конфигурационные файлы, которые вы меняли, сохранятся; удалять пакеты apt не будет. Задание работает на сервере само, его можно не ждать.'),
+        warn: vpn ? L('Обновление может перезапустить службы, в том числе VPN — клиенты на несколько секунд потеряют связь.') : null,
+        ok: L('Установить'),
       });
       if (!ok) return;
     }
     try {
       const r = await api(`/servers/${encodeURIComponent(id)}/system/apt`, { method: 'POST', body: { action } });
-      if (r.already) toast('Обновление уже идёт — показываю его ход', 'warn');
+      if (r.already) toast(L('Обновление уже идёт — показываю его ход'), 'warn');
       watchJob(r.unit);
-    } catch (e) { toast('Не удалось запустить', 'bad', e.message); }
+    } catch (e) { toast(L('Не удалось запустить'), 'bad', e.message); }
   }
 
   function watchJob(unit) {
     st.job = unit;
     if (st.d) render();
     const pre = h('pre', { class: 'pre job-log' }, '…');
-    const head = h('div', { class: 'job-head' }, h('span', { class: 'spinner' }), h('b', null, unit.includes('apt') ? 'Обновление пакетов' : unit), h('span', { class: 'muted' }, 'идёт на сервере'));
+    const head = h('div', { class: 'job-head' }, h('span', { class: 'spinner' }), h('b', null, unit.includes('apt') ? L('Обновление пакетов') : unit), h('span', { class: 'muted' }, L('идёт на сервере')));
     jobBox.replaceChildren(h('div', { class: 'card', style: { marginBottom: '16px' } }, head, pre));
     const poll = async () => {
       if (st.dead) return;
@@ -2845,10 +3142,10 @@ function systemTab(page) {
         if (atEnd) pre.scrollTop = pre.scrollHeight;
         if (!r.running) {
           const ok = r.exit === 0;
-          head.replaceChildren(h('span', { class: 'st ' + (ok ? 'good' : 'bad') }, h('span', { class: 'dot' }), ok ? 'Готово' : r.exit > 0 ? `Ошибка (код ${r.exit})` : 'Задание завершилось'),
-            h('span', { class: 'grow' }), h('button', { class: 'btn ghost sm', type: 'button', onclick: () => jobBox.replaceChildren() }, 'Скрыть'));
+          head.replaceChildren(h('span', { class: 'st ' + (ok ? 'good' : 'bad') }, h('span', { class: 'dot' }), ok ? L('Готово') : r.exit > 0 ? L('Ошибка (код {0})', r.exit) : L('Задание завершилось')),
+            h('span', { class: 'grow' }), h('button', { class: 'btn ghost sm', type: 'button', onclick: () => jobBox.replaceChildren() }, L('Скрыть')));
           st.job = '';
-          toast(ok ? `${page.srv.name}: пакеты обновлены` : `${page.srv.name}: обновление завершилось с ошибкой`, ok ? 'good' : 'bad');
+          toast(ok ? L('{0}: пакеты обновлены', page.srv.name) : L('{0}: обновление завершилось с ошибкой', page.srv.name), ok ? 'good' : 'bad');
           load();
           return;
         }
@@ -2871,7 +3168,7 @@ function loadXterm() {
     const sc = document.createElement('script');
     sc.src = src;
     sc.onload = res;
-    sc.onerror = () => { xtermLoading = null; rej(new Error('не удалось загрузить ' + src)); };
+    sc.onerror = () => { xtermLoading = null; rej(new Error(L('не удалось загрузить ') + src)); };
     document.head.append(sc);
   });
   document.head.append(h('link', { rel: 'stylesheet', href: 'vendor/xterm.css' }));
@@ -2900,13 +3197,13 @@ function termTab(page) {
   const host = h('div', { class: 'term-host' });
   const statusEl = h('span', { class: 'muted', style: { fontSize: '12.5px' } });
   const sessEl = h('div', { class: 'seg' });
-  const closeBtn = h('button', { class: 'btn sm', type: 'button', onclick: () => closeSession() }, 'Завершить сессию');
+  const closeBtn = h('button', { class: 'btn sm', type: 'button', onclick: () => closeSession() }, L('Завершить сессию'));
   const el = h('div', null,
     h('div', { class: 'toolbar' }, sessEl,
-      h('button', { class: 'btn sm', type: 'button', onclick: () => newSession() }, '+ Новая сессия'),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => newSession() }, L('+ Новая сессия')),
       statusEl, h('span', { class: 'grow' }), closeBtn),
     host,
-    h('div', { class: 'term-hint muted' }, 'Сессия продолжает работать, если уйти со вкладки, и закрывается через 15 минут без подключений. Копирование — выделите текст, вставка — ⌘V.'));
+    h('div', { class: 'term-hint muted' }, L('Сессия продолжает работать, если уйти со вкладки, и закрывается через 15 минут без подключений. Копирование — выделите текст, вставка — ⌘V.')));
 
   function setStatus(text, cls) {
     statusEl.replaceChildren(cls ? h('span', { class: 'st ' + cls }, h('span', { class: 'dot' }), text) : text);
@@ -2914,9 +3211,9 @@ function termTab(page) {
 
   function renderSessions() {
     sessEl.replaceChildren(...st.sessions.map((x, i) => h('button', {
-      type: 'button', class: x.id === st.sid ? 'on' : '', title: 'открыта ' + Fmt.dateTime(x.created, false),
+      type: 'button', class: x.id === st.sid ? 'on' : '', title: L('открыта ') + Fmt.dateTime(x.created, false),
       onclick: () => { if (x.id !== st.sid) attach(x.id); },
-    }, `Сессия ${i + 1}` + (x.done ? ' · завершена' : ''))));
+    }, L('Сессия {0}', i + 1) + (x.done ? L(' · завершена') : ''))));
     sessEl.hidden = st.sessions.length < 2;
     closeBtn.disabled = !st.sid;
   }
@@ -2981,13 +3278,13 @@ function termTab(page) {
     renderSessions();
     ensureTerm();
     st.term.reset();
-    setStatus('подключение…', 'warn');
+    setStatus(L('подключение…'), 'warn');
     const es = new EventSource(`/api/term/${sid}/stream?token=${encodeURIComponent(TOKEN)}`);
     st.es = es;
     es.addEventListener('r', (e) => {
       st.term.reset();
       st.term.write(b64bytes(JSON.parse(e.data)));
-      setStatus('подключено', 'good');
+      setStatus(L('подключено'), 'good');
       scheduleFit();
       st.term.focus();
     });
@@ -3003,7 +3300,7 @@ function termTab(page) {
     });
     es.onerror = () => {
       if (st.done || st.dead) return;
-      setStatus('переподключение…', 'warn');
+      setStatus(L('переподключение…'), 'warn');
       if (es.readyState === EventSource.CLOSED) setTimeout(() => { if (!st.dead && st.sid === sid) refresh(); }, 2000);
     };
   }
@@ -3012,7 +3309,7 @@ function termTab(page) {
     ensureTerm();
     let cols = 100, rows = 30;
     try { const d = st.fit.proposeDimensions(); if (d && d.cols) { cols = d.cols; rows = d.rows; } } catch (e) { /* размер по умолчанию */ }
-    setStatus('открываю сессию…', 'warn');
+    setStatus(L('открываю сессию…'), 'warn');
     try {
       const r = await api(`/servers/${encodeURIComponent(id)}/term`, { method: 'POST', body: { cols, rows } });
       st.sessions.push({ id: r.id, created: r.created, done: false });
@@ -3025,7 +3322,7 @@ function termTab(page) {
     if (!st.sid) return;
     const x = st.sessions.find((s) => s.id === st.sid);
     if (x && !x.done) {
-      const ok = await confirmDialog({ title: 'Завершить сессию терминала?', text: 'Запущенные в ней программы получат сигнал отбоя (SIGHUP).', ok: 'Завершить', danger: true });
+      const ok = await confirmDialog({ title: L('Завершить сессию терминала?'), text: L('Запущенные в ней программы получат сигнал отбоя (SIGHUP).'), ok: L('Завершить'), danger: true });
       if (!ok) return;
     }
     try { await api(`/term/${st.sid}`, { method: 'DELETE' }); } catch (e) { /* уже закрыта */ }
@@ -3035,7 +3332,7 @@ function termTab(page) {
     if (st.es) { st.es.close(); st.es = null; }
     const next = st.sessions.filter((s) => !s.done).pop();
     if (next) attach(next.id);
-    else { renderSessions(); st.term.reset(); setStatus('нет открытых сессий'); }
+    else { renderSessions(); st.term.reset(); setStatus(L('нет открытых сессий')); }
   }
 
   async function refresh() {
@@ -3073,33 +3370,33 @@ async function patchServer(id, body) {
 async function reconnect(id) {
   try {
     await api(`/servers/${encodeURIComponent(id)}/reconnect`, { method: 'POST', body: {} });
-    toast('Переподключаюсь…', 'warn');
+    toast(L('Переподключаюсь…'), 'warn');
   } catch (e) { toast(e.message, 'bad'); }
 }
 
 async function reloadConfig() {
   try {
     await api('/servers/reload', { method: 'POST', body: {} });
-    toast('Список серверов обновлён из ~/.ssh/config');
+    toast(L('Список серверов обновлён из ~/.ssh/config'));
   } catch (e) { toast(e.message, 'bad'); }
 }
 
 function rebootDialog(s) {
   const input = h('input', { class: 'input', placeholder: s.name, autocomplete: 'off', spellcheck: 'false' });
-  const btn = h('button', { class: 'btn danger solid', type: 'button', disabled: true }, 'Перезагрузить');
+  const btn = h('button', { class: 'btn danger solid', type: 'button', disabled: true }, L('Перезагрузить'));
   input.addEventListener('input', () => { btn.disabled = input.value.trim() !== s.name; });
   const m = modal({
-    title: `Перезагрузить ${s.name}?`,
+    title: L('Перезагрузить {0}?', s.name),
     body: h('div', { class: 'form' },
-      h('div', { class: 'alert warn' }, icon('warn'), h('div', null, 'Все службы и подключения к серверу прервутся на 1–3 минуты. Если сервер не поднимется, понадобится консоль хостинга.')),
-      h('label', { class: 'field' }, h('span', null, 'Для подтверждения введите название сервера: ', h('b', null, s.name)), input)),
-    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Отмена'), btn],
+      h('div', { class: 'alert warn' }, icon('warn'), h('div', null, L('Все службы и подключения к серверу прервутся на 1–3 минуты. Если сервер не поднимется, понадобится консоль хостинга.'))),
+      h('label', { class: 'field' }, h('span', null, L('Для подтверждения введите название сервера: '), h('b', null, s.name)), input)),
+    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Отмена')), btn],
   });
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     try {
       const r = await api(`/servers/${encodeURIComponent(s.id)}/reboot`, { method: 'POST', body: { confirm: input.value.trim() } });
-      if (r.ok) { toast(`${s.name}: перезагрузка запущена`, 'warn'); m.close(); } else { toast('Перезагрузка не удалась', 'bad', r.error); btn.disabled = false; }
+      if (r.ok) { toast(L('{0}: перезагрузка запущена', s.name), 'warn'); m.close(); } else { toast(L('Перезагрузка не удалась'), 'bad', r.error); btn.disabled = false; }
     } catch (e) { toast(e.message, 'bad'); btn.disabled = false; }
   });
 }
@@ -3124,9 +3421,18 @@ $('#btn-theme').addEventListener('click', () => {
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (!document.documentElement.dataset.theme) themeChanged(); });
 
 $('#btn-add').addEventListener('click', () => addServerDialog());
+$('#cmdk').addEventListener('click', () => Palette.open());
+$('#cmdk-kbd').textContent = IS_MAC ? '⌘K' : 'Ctrl K';
+for (const b of document.querySelectorAll('#lang button')) {
+  b.setAttribute('aria-pressed', String(b.dataset.lang === I18N.lang));
+  b.addEventListener('click', () => { if (b.dataset.lang !== I18N.lang) setLang(b.dataset.lang); });
+}
+$('#srv-filter').addEventListener('input', renderSidebar);
+$('#scroll').addEventListener('scroll', () => $('#scroll').classList.toggle('scrolled', $('#scroll').scrollTop > 4), { passive: true });
+i18nStatic(document);
 $('#btn-reload').addEventListener('click', reloadConfig);
 window.addEventListener('hashchange', () => route());
 window.addEventListener('resize', () => { for (const s of S.servers) updateSideRow(s); });
 
-$('#main').replaceChildren(h('div', { class: 'page' }, h('div', { class: 'empty' }, h('span', { class: 'spinner' }), NB + ' Подключение к панели…')));
+$('#main').replaceChildren(h('div', { class: 'page' }, h('div', { class: 'empty' }, h('span', { class: 'spinner' }), NB + L(' Подключение к панели…'))));
 connect();

@@ -11,6 +11,7 @@ import (
 )
 
 func (a *App) routes(mux *http.ServeMux) {
+	mux.HandleFunc("PUT /api/lang", a.handleLang)
 	mux.HandleFunc("GET /api/ping", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"ok": true})
 	})
@@ -102,6 +103,27 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 
+// handleLang — интерфейс сообщает язык: на нём панель пишет ошибки и оповещения.
+func (a *App) handleLang(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Lang string `json:"lang"`
+	}
+	if err := readJSON(r, &req); err != nil || (req.Lang != "ru" && req.Lang != "en") {
+		writeErr(w, 400, L("неверный запрос"))
+		return
+	}
+	a.mu.Lock()
+	a.settings.Lang = req.Lang
+	err := a.saveSettings()
+	a.mu.Unlock()
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	setLang(req.Lang)
+	writeJSON(w, 200, map[string]string{"lang": req.Lang})
+}
+
 func readJSON(r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(nil, r.Body, 1<<20)
 	return json.NewDecoder(r.Body).Decode(v)
@@ -113,7 +135,7 @@ func (a *App) withMon(h monHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		m := a.monitor(r.PathValue("id"))
 		if m == nil {
-			writeErr(w, 404, "сервер не найден")
+			writeErr(w, 404, L("сервер не найден"))
 			return
 		}
 		h(w, r, m)
@@ -139,7 +161,7 @@ func (a *App) handleStream(w http.ResponseWriter, r *http.Request) {
 	firing := a.alerts.firingList()
 	a.alerts.mu.Unlock()
 	hello, _ := json.Marshal(map[string]any{"servers": a.views(true), "interval": a.interval.Milliseconds(), "firing": firing, "setup": a.setupInfo(),
-		"notes": a.notesCopy(), "scenarios": a.scenariosCopy()})
+		"notes": a.notesCopy(), "scenarios": a.scenariosCopy(), "avail": a.avail.view(time.Now()), "lang": lang()})
 	w.Write([]byte("retry: 3000\n"))
 	w.Write(sseMessage("hello", hello))
 	fl.Flush()
@@ -227,12 +249,12 @@ func (a *App) handleKill(w http.ResponseWriter, r *http.Request, m *Monitor) {
 		Signal string `json:"signal"`
 	}
 	if err := readJSON(r, &req); err != nil || req.PID <= 1 {
-		writeErr(w, 400, "неверный PID")
+		writeErr(w, 400, L("неверный PID"))
 		return
 	}
 	sigs := map[string]bool{"TERM": true, "KILL": true, "HUP": true, "INT": true}
 	if !sigs[req.Signal] {
-		writeErr(w, 400, "недопустимый сигнал")
+		writeErr(w, 400, L("недопустимый сигнал"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
@@ -275,12 +297,12 @@ func (a *App) handleServiceAction(w http.ResponseWriter, r *http.Request, m *Mon
 		Action string `json:"action"`
 	}
 	if err := readJSON(r, &req); err != nil || !unitRe.MatchString(req.Unit) {
-		writeErr(w, 400, "недопустимое имя службы")
+		writeErr(w, 400, L("недопустимое имя службы"))
 		return
 	}
 	actions := map[string]bool{"start": true, "stop": true, "restart": true, "reload": true, "enable": true, "disable": true}
 	if !actions[req.Action] {
-		writeErr(w, 400, "недопустимое действие")
+		writeErr(w, 400, L("недопустимое действие"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
@@ -329,7 +351,7 @@ func (a *App) handleLogs(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	case unitRe.MatchString(unit) || unitRe.MatchString(unit+".service"):
 		args = append(args, "-u", shq(unit))
 	default:
-		writeErr(w, 400, "недопустимое имя службы")
+		writeErr(w, 400, L("недопустимое имя службы"))
 		return
 	}
 	if p := q.Get("prio"); p != "" {
@@ -339,7 +361,7 @@ func (a *App) handleLogs(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	}
 	if c := q.Get("after"); c != "" {
 		if len(c) > 512 {
-			writeErr(w, 400, "неверный курсор")
+			writeErr(w, 400, L("неверный курсор"))
 			return
 		}
 		args = append(args, "--after-cursor="+shq(c))
@@ -408,12 +430,12 @@ func (a *App) handleDockerAction(w http.ResponseWriter, r *http.Request, m *Moni
 		Action    string `json:"action"`
 	}
 	if err := readJSON(r, &req); err != nil || !containerRe.MatchString(req.Container) {
-		writeErr(w, 400, "недопустимое имя контейнера")
+		writeErr(w, 400, L("недопустимое имя контейнера"))
 		return
 	}
 	actions := map[string]bool{"start": true, "stop": true, "restart": true, "pause": true, "unpause": true}
 	if !actions[req.Action] {
-		writeErr(w, 400, "недопустимое действие")
+		writeErr(w, 400, L("недопустимое действие"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
@@ -425,7 +447,7 @@ func (a *App) handleDockerAction(w http.ResponseWriter, r *http.Request, m *Moni
 func (a *App) handleDockerLogs(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	c := r.URL.Query().Get("container")
 	if !containerRe.MatchString(c) {
-		writeErr(w, 400, "недопустимое имя контейнера")
+		writeErr(w, 400, L("недопустимое имя контейнера"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -448,7 +470,7 @@ func (a *App) handleExec(w http.ResponseWriter, r *http.Request, m *Monitor) {
 		Timeout int    `json:"timeout"` // секунд; сценарии могут работать дольше обычной команды
 	}
 	if err := readJSON(r, &req); err != nil || strings.TrimSpace(req.Cmd) == "" {
-		writeErr(w, 400, "пустая команда")
+		writeErr(w, 400, L("пустая команда"))
 		return
 	}
 	limit := 120 * time.Second
@@ -477,13 +499,13 @@ func (a *App) handleReboot(w http.ResponseWriter, r *http.Request, m *Monitor) {
 	}
 	srv := m.server()
 	if err := readJSON(r, &req); err != nil || (req.Confirm != srv.Name && req.Confirm != srv.ID) {
-		writeErr(w, 400, "подтверждение не совпадает с названием сервера")
+		writeErr(w, 400, L("подтверждение не совпадает с названием сервера"))
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	if in := m.ensureInfo(ctx); in != nil && in.UID != 0 && !in.Sudo {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": "нет прав: нужен root или sudo без пароля"})
+		writeJSON(w, 200, map[string]any{"ok": false, "error": L("нет прав: нужен root или sudo без пароля")})
 		return
 	}
 	s := m.sudo(ctx)

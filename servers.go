@@ -59,7 +59,7 @@ func (a *App) panelPub(create bool) (string, error) {
 		defer cancel()
 		out, err := exec.CommandContext(ctx, "ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", comment, "-f", p).CombinedOutput()
 		if err != nil {
-			return "", fmt.Errorf("не удалось создать ключ (ssh-keygen): %v %s", err, strings.TrimSpace(string(out)))
+			return "", fmt.Errorf(L("не удалось создать ключ (ssh-keygen): %v %s"), err, strings.TrimSpace(string(out)))
 		}
 	}
 	b, err := os.ReadFile(p + ".pub")
@@ -69,7 +69,7 @@ func (a *App) panelPub(create bool) (string, error) {
 	pub := strings.TrimSpace(string(b))
 	f := strings.Fields(pub)
 	if len(f) < 2 || !keyTypeRe.MatchString(f[0]) || !b64Re.MatchString(f[1]) {
-		return "", errors.New("неожиданный формат открытого ключа панели")
+		return "", errors.New(L("неожиданный формат открытого ключа панели"))
 	}
 	return pub, nil
 }
@@ -154,12 +154,12 @@ func scanHostKeys(ctx context.Context, host string, port int) ([]hostKey, error)
 	}
 	if len(keys) == 0 {
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, errors.New("не найден ssh-keyscan — установите клиент OpenSSH")
+			return nil, errors.New(L("не найден ssh-keyscan — установите клиент OpenSSH"))
 		}
 		if msg := sshError(errb.String()); msg != "" {
 			return nil, errors.New(msg)
 		}
-		return nil, fmt.Errorf("не удалось подключиться к %s:%d — проверьте адрес и порт SSH", host, port)
+		return nil, fmt.Errorf(L("не удалось подключиться к %s:%d — проверьте адрес и порт SSH"), host, port)
 	}
 	rank := map[string]int{"ssh-ed25519": 0, "ecdsa-sha2-nistp256": 1, "ecdsa-sha2-nistp384": 1, "ecdsa-sha2-nistp521": 1, "ssh-rsa": 2}
 	sort.SliceStable(keys, func(i, j int) bool { return rank[keys[i].Type] < rank[keys[j].Type] })
@@ -191,19 +191,19 @@ func (c *connReq) normalize() error {
 		}
 	}
 	if !hostRe.MatchString(c.Host) || strings.HasPrefix(c.Host, "-") {
-		return errors.New("укажите адрес сервера: IP или домен")
+		return errors.New(L("укажите адрес сервера: IP или домен"))
 	}
 	if c.User == "" {
 		c.User = "root"
 	}
 	if !userRe.MatchString(c.User) || strings.HasPrefix(c.User, "-") {
-		return errors.New("недопустимое имя пользователя")
+		return errors.New(L("недопустимое имя пользователя"))
 	}
 	if c.Port == 0 {
 		c.Port = 22
 	}
 	if c.Port < 1 || c.Port > 65535 {
-		return errors.New("недопустимый порт")
+		return errors.New(L("недопустимый порт"))
 	}
 	return nil
 }
@@ -211,7 +211,7 @@ func (c *connReq) normalize() error {
 func (a *App) handleProbe(w http.ResponseWriter, r *http.Request) {
 	var req connReq
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	if err := req.normalize(); err != nil {
@@ -251,10 +251,10 @@ func takeProbe(id, host string, port int) (*probeResult, error) {
 	defer probeMu.Unlock()
 	p := probes[id]
 	if p == nil || time.Since(p.At) > 15*time.Minute {
-		return nil, errors.New("проверка адреса устарела — нажмите «Далее» ещё раз")
+		return nil, errors.New(L("проверка адреса устарела — нажмите «Далее» ещё раз"))
 	}
 	if !strings.EqualFold(p.Host, host) || p.Port != port {
-		return nil, errors.New("адрес изменился после проверки — нажмите «Далее» ещё раз")
+		return nil, errors.New(L("адрес изменился после проверки — нажмите «Далее» ещё раз"))
 	}
 	return p, nil
 }
@@ -314,13 +314,13 @@ func (a *App) installPanelKey(ctx context.Context, s *Server, password, pub stri
 		return nil
 	}
 	if ctx.Err() != nil {
-		return errors.New("сервер не ответил вовремя")
+		return errors.New(L("сервер не ответил вовремя"))
 	}
 	if strings.Contains(text, "Permission denied") || strings.Contains(text, "Authentication failed") {
 		if s.User == "root" {
-			return errors.New("пароль не подошёл, или сервер не пускает root по паролю (так часто бывает) — попробуйте обычного пользователя с sudo")
+			return errors.New(L("пароль не подошёл, или сервер не пускает root по паролю (так часто бывает) — попробуйте обычного пользователя с sudo"))
 		}
-		return errors.New("пароль не подошёл, или вход по паролю на сервере выключен")
+		return errors.New(L("пароль не подошёл, или вход по паролю на сервере выключен"))
 	}
 	if msg := sshError(text); msg != "" {
 		return errors.New(msg)
@@ -331,7 +331,7 @@ func (a *App) installPanelKey(ctx context.Context, s *Server, password, pub stri
 	if err != nil {
 		return err
 	}
-	return errors.New("не удалось установить ключ")
+	return errors.New(L("не удалось установить ключ"))
 }
 
 // askpassMain — панель, запущенная ssh в роли SSH_ASKPASS: печатает пароль
@@ -365,7 +365,7 @@ func (a *App) checkLogin(ctx context.Context, s *Server) error {
 	if res.Err != nil || strings.TrimSpace(res.Stdout) != "ok" {
 		msg := res.errText()
 		if msg == "" {
-			msg = "сервер не ответил"
+			msg = L("сервер не ответил")
 		}
 		return errors.New(msg)
 	}
@@ -375,7 +375,7 @@ func (a *App) checkLogin(ctx context.Context, s *Server) error {
 func cleanName(n string) (string, error) {
 	n = strings.TrimSpace(n)
 	if len([]rune(n)) > 64 {
-		return "", errors.New("слишком длинное название")
+		return "", errors.New(L("слишком длинное название"))
 	}
 	return n, nil
 }
@@ -383,7 +383,7 @@ func cleanName(n string) (string, error) {
 func cleanGroup(g string) (string, error) {
 	g = strings.Join(strings.Fields(g), " ")
 	if len([]rune(g)) > 40 {
-		return "", errors.New("слишком длинное название группы")
+		return "", errors.New(L("слишком длинное название группы"))
 	}
 	return g, nil
 }
@@ -397,7 +397,7 @@ func (a *App) checkKeyFile(k string) (string, error) {
 		k = a.panelKeyPath()
 	}
 	if _, err := os.Stat(expandHome(k)); err != nil {
-		return "", errors.New("файл ключа не найден: " + k)
+		return "", errors.New(L("файл ключа не найден: ") + k)
 	}
 	return k, nil
 }
@@ -414,7 +414,7 @@ func (a *App) handleAddServer(w http.ResponseWriter, r *http.Request) {
 		Force    bool   `json:"force"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	if err := req.normalize(); err != nil {
@@ -443,7 +443,7 @@ func (a *App) handleAddServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := a.pinHostKeys(s.ID, p.Keys); err != nil {
-			writeErr(w, 500, "не удалось сохранить ключ сервера: "+err.Error())
+			writeErr(w, 500, L("не удалось сохранить ключ сервера: ")+err.Error())
 			return
 		}
 		s.Pinned = true
@@ -460,7 +460,7 @@ func (a *App) handleAddServer(w http.ResponseWriter, r *http.Request) {
 	switch req.Auth {
 	case "password":
 		if req.Password == "" || len(req.Password) > 1024 || strings.ContainsAny(req.Password, "\r\n") {
-			fail(400, "введите пароль", false)
+			fail(400, L("введите пароль"), false)
 			return
 		}
 		pub, err := a.panelPub(true)
@@ -474,7 +474,7 @@ func (a *App) handleAddServer(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := a.checkLogin(ctx, s); err != nil {
-			fail(422, "ключ установлен, но вход по нему не удался: "+err.Error(), false)
+			fail(422, L("ключ установлен, но вход по нему не удался: ")+err.Error(), false)
 			return
 		}
 	default:
@@ -497,7 +497,7 @@ func (a *App) handleAddServer(w http.ResponseWriter, r *http.Request) {
 	err = a.saveSettings()
 	a.mu.Unlock()
 	if err != nil {
-		writeErr(w, 500, "не удалось сохранить настройки: "+err.Error())
+		writeErr(w, 500, L("не удалось сохранить настройки: ")+err.Error())
 		return
 	}
 	a.syncServers()
@@ -510,7 +510,7 @@ func (a *App) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	m := a.monitor(id)
 	if m == nil {
-		writeErr(w, 404, "сервер не найден")
+		writeErr(w, 404, L("сервер не найден"))
 		return
 	}
 	var req struct {
@@ -527,7 +527,7 @@ func (a *App) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		Probe   string  `json:"probe"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	if req.Name != nil {
@@ -551,7 +551,7 @@ func (a *App) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 	var newConn Server
 	if req.Host != nil || req.Port != nil || req.User != nil || req.KeyFile != nil {
 		if srv.Source != "manual" {
-			writeErr(w, 400, "параметры подключения этого сервера берутся из ~/.ssh/config — меняйте их там")
+			writeErr(w, 400, L("параметры подключения этого сервера берутся из ~/.ssh/config — меняйте их там"))
 			return
 		}
 		c := connReq{Host: srv.Host, Port: srv.Port, User: srv.User}
@@ -580,7 +580,7 @@ func (a *App) handleUpdateServer(w http.ResponseWriter, r *http.Request) {
 		}
 		addrChanged := !strings.EqualFold(newConn.Host, srv.Host) || newConn.Port != srv.Port
 		if addrChanged && srv.Pinned && req.Probe == "" {
-			writeErr(w, 409, "адрес изменился — сначала проверьте отпечаток ключа сервера")
+			writeErr(w, 409, L("адрес изменился — сначала проверьте отпечаток ключа сервера"))
 			return
 		}
 		if req.Probe != "" {
@@ -683,7 +683,7 @@ func (a *App) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	m := a.monitor(id)
 	if m == nil {
-		writeErr(w, 404, "сервер не найден")
+		writeErr(w, 404, L("сервер не найден"))
 		return
 	}
 	srv := m.server()
@@ -691,7 +691,7 @@ func (a *App) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 	var warn string
 	if revoke && srv.Source == "manual" && srv.KeyFile == a.panelKeyPath() {
 		if err := a.revokePanelKey(r.Context(), &srv); err != nil {
-			warn = "ключ панели с сервера убрать не удалось: " + err.Error()
+			warn = L("ключ панели с сервера убрать не удалось: ") + err.Error()
 		}
 	}
 
@@ -732,7 +732,7 @@ func (a *App) handleDeleteServer(w http.ResponseWriter, r *http.Request) {
 func (a *App) revokePanelKey(ctx context.Context, s *Server) error {
 	pub, err := a.panelPub(false)
 	if err != nil || pub == "" {
-		return errors.New("ключ панели не найден")
+		return errors.New(L("ключ панели не найден"))
 	}
 	// тот же сервер и пользователь могут быть добавлены дважды — не отрезаем второй
 	for _, v := range a.views(false) {
@@ -747,7 +747,7 @@ func (a *App) revokePanelKey(ctx context.Context, s *Server) error {
 		if t := res.errText(); t != "" {
 			return errors.New(t)
 		}
-		return errors.New("сервер не подтвердил")
+		return errors.New(L("сервер не подтвердил"))
 	}
 	return nil
 }
@@ -768,7 +768,7 @@ func (a *App) handleOrder(w http.ResponseWriter, r *http.Request) {
 		IDs []string `json:"ids"`
 	}
 	if err := readJSON(r, &req); err != nil || len(req.IDs) > 1000 {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	a.mu.Lock()
@@ -840,7 +840,7 @@ func (a *App) handleSSHHostsSave(w http.ResponseWriter, r *http.Request) {
 		Show []string `json:"show"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	show := map[string]bool{}
@@ -915,7 +915,7 @@ func (a *App) handleKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []key{}
 	if pub, err := a.panelPub(r.URL.Query().Get("create") == "1"); err == nil && pub != "" {
-		out = append(out, key{Path: "panel", Name: "Ключ панели", Pub: pub, Panel: true})
+		out = append(out, key{Path: "panel", Name: L("Ключ панели"), Pub: pub, Panel: true})
 	}
 	sshDir := filepath.Join(a.home, ".ssh")
 	files, _ := filepath.Glob(filepath.Join(sshDir, "*.pub"))

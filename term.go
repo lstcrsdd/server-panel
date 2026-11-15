@@ -74,7 +74,7 @@ func (a *App) startTerm(srv Server, cols, rows int) (*termSession, error) {
 	}
 	a.terms.mu.Unlock()
 	if n >= termMaxOpen {
-		return nil, errors.New("открыто слишком много терминалов — закройте ненужные")
+		return nil, errors.New(L("открыто слишком много терминалов — закройте ненужные"))
 	}
 	env := os.Environ()
 	env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
@@ -83,7 +83,7 @@ func (a *App) startTerm(srv Server, cols, rows int) (*termSession, error) {
 	}
 	p, err := startPTY(append([]string{"ssh"}, a.termArgs(&srv)...), env, cols, rows)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось запустить терминал: %v", err)
+		return nil, fmt.Errorf(L("не удалось запустить терминал: %v"), err)
 	}
 	t := &termSession{ID: randToken() + randToken(), Server: srv.ID, Created: time.Now().UnixMilli(),
 		p: p, subs: map[chan []byte]struct{}{}, idleAt: time.Now()}
@@ -128,11 +128,11 @@ func (t *termSession) pump() {
 		}
 	}
 	code, _ := t.p.Wait()
-	msg := "соединение закрыто"
+	msg := L("соединение закрыто")
 	if code == 255 {
-		msg = "ssh: нет связи с сервером или соединение прервано"
+		msg = L("ssh: нет связи с сервером или соединение прервано")
 	} else if code > 0 {
-		msg = fmt.Sprintf("сессия завершена (код %d)", code)
+		msg = fmt.Sprintf(L("сессия завершена (код %d)"), code)
 	}
 	t.p.Close()
 	t.mu.Lock()
@@ -287,7 +287,7 @@ func (a *App) handleTermOpen(w http.ResponseWriter, r *http.Request, m *Monitor)
 func (a *App) handleTermStream(w http.ResponseWriter, r *http.Request) {
 	t := a.term(r.PathValue("tid"))
 	if t == nil {
-		writeErr(w, 404, "сессия не найдена")
+		writeErr(w, 404, L("сессия не найдена"))
 		return
 	}
 	fl, ok := w.(http.Flusher)
@@ -350,25 +350,25 @@ func (a *App) handleTermStream(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleTermInput(w http.ResponseWriter, r *http.Request) {
 	t := a.term(r.PathValue("tid"))
 	if t == nil {
-		writeErr(w, 404, "сессия не найдена")
+		writeErr(w, 404, L("сессия не найдена"))
 		return
 	}
 	var req struct {
 		D string `json:"d"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	if t.isDone() {
-		writeErr(w, 410, "сессия завершена")
+		writeErr(w, 410, L("сессия завершена"))
 		return
 	}
 	t.inMu.Lock()
 	_, err := t.p.Write([]byte(req.D))
 	t.inMu.Unlock()
 	if err != nil {
-		writeErr(w, 410, "сессия завершена")
+		writeErr(w, 410, L("сессия завершена"))
 		return
 	}
 	w.WriteHeader(204)
@@ -377,7 +377,7 @@ func (a *App) handleTermInput(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleTermResize(w http.ResponseWriter, r *http.Request) {
 	t := a.term(r.PathValue("tid"))
 	if t == nil {
-		writeErr(w, 404, "сессия не найдена")
+		writeErr(w, 404, L("сессия не найдена"))
 		return
 	}
 	var req struct {
@@ -385,7 +385,7 @@ func (a *App) handleTermResize(w http.ResponseWriter, r *http.Request) {
 		Rows int `json:"rows"`
 	}
 	if err := readJSON(r, &req); err != nil {
-		writeErr(w, 400, "неверный запрос")
+		writeErr(w, 400, L("неверный запрос"))
 		return
 	}
 	if !t.isDone() {
@@ -399,7 +399,7 @@ func (a *App) handleTermClose(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("tid")
 	t := a.term(id)
 	if t == nil {
-		writeErr(w, 404, "сессия не найдена")
+		writeErr(w, 404, L("сессия не найдена"))
 		return
 	}
 	t.kill()

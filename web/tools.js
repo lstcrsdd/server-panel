@@ -20,18 +20,18 @@ function whenText(ms) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const diff = Math.round((day - today) / 86400e3);
   const t = Fmt.clock(ms);
-  if (diff === 0) return 'сегодня ' + t;
-  if (diff === -1) return 'вчера ' + t;
-  if (diff === 1) return 'завтра ' + t;
+  if (diff === 0) return L('сегодня ') + t;
+  if (diff === -1) return L('вчера ') + t;
+  if (diff === 1) return L('завтра ') + t;
   const opts = { day: 'numeric', month: 'short' };
   if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
-  const wd = Math.abs(diff) < 7 ? d.toLocaleDateString('ru-RU', { weekday: 'short' }) + ', ' : '';
-  return wd + d.toLocaleDateString('ru-RU', opts) + ' ' + t;
+  const wd = Math.abs(diff) < 7 ? d.toLocaleDateString(I18N.locale, { weekday: 'short' }) + ', ' : '';
+  return wd + d.toLocaleDateString(I18N.locale, opts) + ' ' + t;
 }
 
 function relText(ms) {
   const sec = (ms - Date.now()) / 1000;
-  return sec >= 0 ? 'через ' + Fmt.dur(sec) : Fmt.dur(-sec) + ' назад';
+  return sec >= 0 ? L('через ') + Fmt.dur(sec) : Fmt.dur(-sec) + L(' назад');
 }
 
 function firstLine(s) {
@@ -70,12 +70,12 @@ function runCard({ title, ids, body, onRemove }) {
   const out = h('div', { class: 'run-body' });
   const el = h('div', { class: 'card run' },
     h('div', { class: 'run-head' }, title, h('span', { class: 'grow' }), prog,
-      h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { el.remove(); if (onRemove) onRemove(el); } }, 'Убрать')),
+      h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { el.remove(); if (onRemove) onRemove(el); } }, L('Убрать'))),
     out);
   const results = new Map();
   const render = () => {
     prog.textContent = results.size < ids.length
-      ? `выполнено ${results.size} из ${ids.length}…`
+      ? L('выполнено {0} из {1}…', results.size, ids.length)
       : `${ids.length} ${Fmt.plural(ids.length, 'сервер', 'сервера', 'серверов')} · ${Fmt.clock(Date.now())}`;
     // одинаковый вывод показываем один раз
     const groups = new Map();
@@ -87,15 +87,15 @@ function runCard({ title, ids, body, onRemove }) {
     }
     out.replaceChildren(...[...groups.values()].map((g) => {
       const names = g.ids.map((id) => h('a', { class: 'pchip', href: '#/s/' + encodeURIComponent(id) }, srvName(id)));
-      if (!g.r) return h('div', { class: 'rgroup' }, h('div', { class: 'rgroup-head' }, names, h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + 'выполняется…')));
+      if (!g.r) return h('div', { class: 'rgroup' }, h('div', { class: 'rgroup-head' }, names, h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + L('выполняется…'))));
       const r = g.r;
-      const badge = r.error ? h('span', { class: 'badge crit' }, 'ошибка') : h('span', { class: 'badge ' + (r.code ? 'warn' : 'good') }, `код ${r.code}`);
+      const badge = r.error ? h('span', { class: 'badge crit' }, L('ошибка')) : h('span', { class: 'badge ' + (r.code ? 'warn' : 'good') }, L('код {0}', r.code));
       return h('div', { class: 'rgroup' },
-        h('div', { class: 'rgroup-head' }, names, badge, groups.size > 1 && g.ids.length > 1 ? h('span', { class: 'muted' }, 'одинаковый вывод') : null,
-          r.ms != null ? h('span', { class: 'muted' }, `${Fmt.int(r.ms)} мс`) : null),
+        h('div', { class: 'rgroup-head' }, names, badge, groups.size > 1 && g.ids.length > 1 ? h('span', { class: 'muted' }, L('одинаковый вывод')) : null,
+          r.ms != null ? h('span', { class: 'muted' }, L('{0} мс', Fmt.int(r.ms))) : null),
         r.error ? h('div', { class: 'bad-ink', style: { fontSize: '13px' } }, r.error) : null,
-        r.output ? h('pre', { class: 'cout rout' }, r.output) : r.error ? null : h('div', { class: 'muted', style: { fontSize: '12.5px' } }, '(нет вывода)'),
-        r.truncated ? h('div', { class: 'muted', style: { fontSize: '12px' } }, 'вывод обрезан до 2 МБ') : null);
+        r.output ? h('pre', { class: 'cout rout' }, r.output) : r.error ? null : h('div', { class: 'muted', style: { fontSize: '12.5px' } }, L('(нет вывода)')),
+        r.truncated ? h('div', { class: 'muted', style: { fontSize: '12px' } }, L('вывод обрезан до 2 МБ')) : null);
     }));
   };
   render();
@@ -137,54 +137,54 @@ function noteCard(n, { showServer } = {}) {
   const label = n.title || firstLine(n.text).slice(0, 60);
   const pin = h('button', {
     class: 'btn ghost sm icon-only note-pin' + (n.pinned ? ' on' : ''), type: 'button',
-    title: n.pinned ? 'Открепить' : 'Закрепить', 'aria-label': (n.pinned ? 'Открепить: ' : 'Закрепить: ') + label, 'aria-pressed': String(!!n.pinned),
+    title: n.pinned ? L('Открепить') : L('Закрепить'), 'aria-label': (n.pinned ? L('Открепить: ') : L('Закрепить: ')) + label, 'aria-pressed': String(!!n.pinned),
     onclick: () => patchNote(n, { pinned: !n.pinned }),
   }, icon('pin'));
   let where = null;
   if (showServer) {
-    if (!n.server) where = h('span', { class: 'tag' }, 'общая');
+    if (!n.server) where = h('span', { class: 'tag' }, L('общая'));
     else if (S.by.has(n.server)) where = h('a', { class: 'pchip', href: `#/s/${encodeURIComponent(n.server)}/notes` }, srvName(n.server));
-    else where = h('span', { class: 'pchip dim', title: 'Сервер удалён из панели' }, (n.serverName || n.server) + ' (удалён)');
+    else where = h('span', { class: 'pchip dim', title: L('Сервер удалён из панели') }, (n.serverName || n.server) + L(' (удалён)'));
   }
   const el = h('div', { class: 'card note' + (n.pinned ? ' pinned' : '') },
     h('div', { class: 'note-head' },
-      h('button', { class: 'note-open', type: 'button', onclick: () => noteDialog(n), 'aria-label': 'Открыть заметку: ' + label },
-        n.title ? h('span', { class: 'note-title' }, n.title) : h('span', { class: 'note-title muted' }, 'Без заголовка')),
+      h('button', { class: 'note-open', type: 'button', onclick: () => noteDialog(n), 'aria-label': L('Открыть заметку: ') + label },
+        n.title ? h('span', { class: 'note-title' }, n.title) : h('span', { class: 'note-title muted' }, L('Без заголовка'))),
       pin),
     n.text ? h('div', { class: 'note-text' }, linkify(n.text)) : null,
-    h('div', { class: 'note-meta' }, where, h('span', { class: 'muted' }, 'изменена ' + whenText(n.updated))));
+    h('div', { class: 'note-meta' }, where, h('span', { class: 'muted' }, L('изменена ') + whenText(n.updated))));
   el.addEventListener('dblclick', (e) => { if (!e.target.closest('a, button')) noteDialog(n); });
   return el;
 }
 
 function notesEmpty(text) {
-  return h('div', { class: 'card empty' }, h('b', null, 'Заметок пока нет'), text);
+  return h('div', { class: 'card empty' }, h('b', null, L('Заметок пока нет')), text);
 }
 
 function noteDialog(n = {}) {
   const isNew = !n.id;
-  const title = h('input', { class: 'input', value: n.title || '', maxlength: '200', placeholder: 'Например: что настроено на сервере', autocomplete: 'off' });
+  const title = h('input', { class: 'input', value: n.title || '', maxlength: '200', placeholder: L('Например: что настроено на сервере'), autocomplete: 'off' });
   const text = h('textarea', { class: 'input note-edit', rows: '12' });
   text.value = n.text || '';
-  const opts = [h('option', { value: '' }, 'Общая — без сервера')];
+  const opts = [h('option', { value: '' }, L('Общая — без сервера'))];
   for (const s of S.servers) opts.push(h('option', { value: s.id, selected: s.id === n.server }, s.name));
-  if (n.server && !S.by.has(n.server)) opts.push(h('option', { value: n.server, selected: true }, (n.serverName || n.server) + ' (удалён)'));
+  if (n.server && !S.by.has(n.server)) opts.push(h('option', { value: n.server, selected: true }, (n.serverName || n.server) + L(' (удалён)')));
   const srvSel = h('select', { class: 'input' }, opts);
   const pin = h('input', { type: 'checkbox', checked: !!n.pinned });
   const err = h('div', { class: 'bad-ink', style: { fontSize: '12.5px' } });
   let dirty = false;
   [title, text].forEach((i) => i.addEventListener('input', () => { dirty = true; }));
   [srvSel, pin].forEach((i) => i.addEventListener('change', () => { dirty = true; }));
-  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Сохранить');
+  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, L('Сохранить'));
   async function save() {
     const body = { title: title.value, text: text.value, server: srvSel.value, pinned: pin.checked };
-    if (!body.title.trim() && !body.text.trim()) { err.textContent = 'Заметка пустая'; return; }
+    if (!body.title.trim() && !body.text.trim()) { err.textContent = L('Заметка пустая'); return; }
     saveBtn.disabled = true;
     try {
       await (isNew ? api('/notes', { method: 'POST', body }) : api('/notes/' + n.id, { method: 'PUT', body }));
       dirty = false;
       m.close(true);
-      toast(isNew ? 'Заметка сохранена' : 'Заметка обновлена');
+      toast(isNew ? L('Заметка сохранена') : L('Заметка обновлена'));
       reloadNotes();
     } catch (e) { err.textContent = e.message; }
     saveBtn.disabled = false;
@@ -194,26 +194,26 @@ function noteDialog(n = {}) {
   const del = isNew ? null : h('button', {
     class: 'btn danger', type: 'button', style: { marginRight: 'auto' },
     onclick: async () => {
-      const ok = await confirmDialog({ title: 'Удалить заметку?', text: n.title || firstLine(n.text).slice(0, 120), ok: 'Удалить', danger: true });
+      const ok = await confirmDialog({ title: L('Удалить заметку?'), text: n.title || firstLine(n.text).slice(0, 120), ok: L('Удалить'), danger: true });
       if (!ok) return;
-      try { await api('/notes/' + n.id, { method: 'DELETE' }); m.close(true); toast('Заметка удалена'); reloadNotes(); } catch (e) { toast(e.message, 'bad'); }
+      try { await api('/notes/' + n.id, { method: 'DELETE' }); m.close(true); toast(L('Заметка удалена')); reloadNotes(); } catch (e) { toast(e.message, 'bad'); }
     },
-  }, 'Удалить');
+  }, L('Удалить'));
   const m = modal({
-    title: isNew ? 'Новая заметка' : 'Заметка',
+    title: isNew ? L('Новая заметка') : L('Заметка'),
     wide: true,
     body: h('div', { class: 'form' },
-      h('label', { class: 'field' }, h('span', null, 'Заголовок'), title),
-      h('label', { class: 'field' }, h('span', null, 'Текст'), text,
-        h('span', { class: 'hint' }, 'Хранится только на этом компьютере, на сервер не записывается. Пароли сюда лучше не класть. ⌘/Ctrl+Enter — сохранить.')),
+      h('label', { class: 'field' }, h('span', null, L('Заголовок')), title),
+      h('label', { class: 'field' }, h('span', null, L('Текст')), text,
+        h('span', { class: 'hint' }, L('Хранится только на этом компьютере, на сервер не записывается. Пароли сюда лучше не класть. ⌘/Ctrl+Enter — сохранить.'))),
       h('div', { class: 'row' },
-        h('label', { class: 'field' }, h('span', null, 'Сервер'), srvSel),
-        h('label', { class: 'check', style: { alignSelf: 'end', paddingBottom: '8px' } }, pin, 'Закрепить — показывать на странице сервера')),
+        h('label', { class: 'field' }, h('span', null, L('Сервер')), srvSel),
+        h('label', { class: 'check', style: { alignSelf: 'end', paddingBottom: '8px' } }, pin, L('Закрепить — показывать на странице сервера'))),
       err),
-    foot: [del, h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Отмена'), saveBtn],
+    foot: [del, h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Отмена')), saveBtn],
     beforeClose: () => {
       if (!dirty) return true;
-      confirmDialog({ title: 'Закрыть без сохранения?', text: 'Изменения в заметке будут потеряны.', ok: 'Закрыть', danger: true }).then((ok) => { if (ok) m.close(true); });
+      confirmDialog({ title: L('Закрыть без сохранения?'), text: L('Изменения в заметке будут потеряны.'), ok: L('Закрыть'), danger: true }).then((ok) => { if (ok) m.close(true); });
       return false;
     },
   });
@@ -227,7 +227,7 @@ function pinnedNotesStrip(id) {
   return h('div', { class: 'pin-strip' },
     ns.slice(0, 3).map((n) => h('button', { class: 'pin-note', type: 'button', onclick: () => noteDialog(n), title: firstLine(n.text) || n.title },
       icon('pin'), h('span', null, n.title || firstLine(n.text)))),
-    ns.length > 3 ? h('a', { class: 'pin-more', href: `#/s/${encodeURIComponent(id)}/notes` }, `ещё ${ns.length - 3}`) : null);
+    ns.length > 3 ? h('a', { class: 'pin-more', href: `#/s/${encodeURIComponent(id)}/notes` }, L('ещё {0}', ns.length - 3)) : null);
 }
 
 function noteBadge(id) {
@@ -240,15 +240,15 @@ function notesTab(page) {
   const list = h('div');
   const el = h('div', null,
     h('div', { class: 'toolbar' },
-      h('span', { class: 'ink2', style: { fontSize: '13px' } }, 'Заметки об этом сервере — хранятся только на этом компьютере'),
+      h('span', { class: 'ink2', style: { fontSize: '13px' } }, L('Заметки об этом сервере — хранятся только на этом компьютере')),
       h('span', { class: 'grow' }),
-      h('button', { class: 'btn sm primary', type: 'button', onclick: () => noteDialog({ server: id }) }, icon('plus'), 'Новая заметка')),
+      h('button', { class: 'btn sm primary', type: 'button', onclick: () => noteDialog({ server: id }) }, icon('plus'), L('Новая заметка'))),
     list);
   const render = () => {
     const ns = sortNotes(notesOf(id));
     list.replaceChildren(ns.length
       ? h('div', { class: 'notes-grid' }, ns.map((n) => noteCard(n)))
-      : notesEmpty('Например: что и зачем настроено на сервере, контакты хостинга, план работ.'));
+      : notesEmpty(L('Например: что и зачем настроено на сервере, контакты хостинга, план работ.')));
   };
   render();
   return { el, onNotes: render };
@@ -260,18 +260,18 @@ class NotesPage {
     this.q = '';
     this.filter = store.get('notesFilter', 'all');
     this.el = h('div', { class: 'page' });
-    this.filterSel = h('select', { class: 'input', style: { width: 'auto' }, 'aria-label': 'Какие заметки показывать' });
+    this.filterSel = h('select', { class: 'input', style: { width: 'auto' }, 'aria-label': L('Какие заметки показывать') });
     this.filterSel.addEventListener('change', () => { this.filter = this.filterSel.value; store.set('notesFilter', this.filter); this.renderList(); });
     this.listEl = h('div');
     this.el.append(
       h('div', { class: 'page-head' },
         h('div', { class: 'head-main' },
-          h('h1', null, 'Заметки'),
-          h('div', { class: 'head-meta' }, h('span', null, 'Хранятся только на этом компьютере — на серверы не записываются'))),
+          h('h1', null, L('Заметки')),
+          h('div', { class: 'head-meta' }, h('span', null, L('Хранятся только на этом компьютере — на серверы не записываются')))),
         h('div', { class: 'head-actions' },
-          h('button', { class: 'btn primary', type: 'button', onclick: () => noteDialog({ server: this.filter !== 'all' && this.filter !== 'general' ? this.filter : '' }) }, icon('plus'), 'Новая заметка'))),
+          h('button', { class: 'btn primary', type: 'button', onclick: () => noteDialog({ server: this.filter !== 'all' && this.filter !== 'general' ? this.filter : '' }) }, icon('plus'), L('Новая заметка')))),
       h('div', { class: 'toolbar' },
-        h('input', { class: 'input search', type: 'search', placeholder: 'Поиск по заметкам', oninput: (e) => { this.q = e.target.value.trim().toLowerCase(); this.renderList(); } }),
+        h('input', { class: 'input search', type: 'search', placeholder: L('Поиск по заметкам'), oninput: (e) => { this.q = e.target.value.trim().toLowerCase(); this.renderList(); } }),
         this.filterSel),
       this.listEl);
     this.render();
@@ -283,7 +283,7 @@ class NotesPage {
 
   render() {
     const count = (f) => S.notes.filter(f).length;
-    const opts = [['all', `Все заметки · ${S.notes.length}`], ['general', `Общие · ${count((n) => !n.server)}`]];
+    const opts = [['all', L('Все заметки · {0}', S.notes.length)], ['general', L('Общие · {0}', count((n) => !n.server))]];
     for (const s of S.servers) {
       const c = count((n) => n.server === s.id);
       if (c || this.filter === s.id) opts.push([s.id, `${s.name} · ${c}`]);
@@ -300,24 +300,24 @@ class NotesPage {
     if (this.q) ns = ns.filter((n) => (n.title + '\n' + n.text + '\n' + srvName(n.server, n.serverName)).toLowerCase().includes(this.q));
     ns = sortNotes(ns);
     if (!S.notes.length) {
-      this.listEl.replaceChildren(notesEmpty('Общие заметки и заметки о серверах: что и зачем настроено, контакты хостинга, план работ. Заметку о конкретном сервере удобно добавить на его странице, во вкладке «Заметки».'));
+      this.listEl.replaceChildren(notesEmpty(L('Общие заметки и заметки о серверах: что и зачем настроено, контакты хостинга, план работ. Заметку о конкретном сервере удобно добавить на его странице, во вкладке «Заметки».')));
       return;
     }
     this.listEl.replaceChildren(ns.length
       ? h('div', { class: 'notes-grid' }, ns.map((n) => noteCard(n, { showServer: true })))
-      : h('div', { class: 'card empty' }, 'Ничего не найдено'));
+      : h('div', { class: 'card empty' }, L('Ничего не найдено')));
   }
 }
 
-/* ================= сценарии ================= */
+/* ================= сохранённые команды (в коде — scenarios) ================= */
 const SCN_TEMPLATES = [
-  { name: 'Место на диске и самые большие папки', script: 'df -h /\necho\ndu -xh --max-depth=2 / 2>/dev/null | sort -rh | head -15', sudo: true, timeout: 600 },
-  { name: 'Очистить старые журналы systemd', desc: 'Оставить журналы за последние 7 дней', script: 'journalctl --vacuum-time=7d', sudo: true },
-  { name: 'Очистить кэш apt', script: 'apt-get clean\ndf -h /', sudo: true },
-  { name: 'Службы с ошибками', script: 'systemctl --failed --no-legend --plain\necho "всего: $(systemctl --failed --no-legend --plain | wc -l)"' },
-  { name: 'Перезапустить службу и проверить', desc: 'Замените xray на нужную службу', script: 'systemctl restart xray\nsleep 2\nsystemctl is-active xray', sudo: true },
+  { name: L('Место на диске и самые большие папки'), script: 'df -h /\necho\ndu -xh --max-depth=2 / 2>/dev/null | sort -rh | head -15', sudo: true, timeout: 600 },
+  { name: L('Очистить старые журналы systemd'), desc: L('Оставить журналы за последние 7 дней'), script: 'journalctl --vacuum-time=7d', sudo: true },
+  { name: L('Очистить кэш apt'), script: 'apt-get clean\ndf -h /', sudo: true },
+  { name: L('Службы с ошибками'), script: L('systemctl --failed --no-legend --plain\necho "всего: $(systemctl --failed --no-legend --plain | wc -l)"') },
+  { name: L('Перезапустить службу и проверить'), desc: L('Замените xray на нужную службу'), script: 'systemctl restart xray\nsleep 2\nsystemctl is-active xray', sudo: true },
 ];
-const SCN_TIMEOUTS = [[120, '2 минуты'], [600, '10 минут'], [1800, '30 минут'], [3600, '1 час']];
+const SCN_TIMEOUTS = [[120, L('2 минуты')], [600, L('10 минут')], [1800, L('30 минут')], [3600, L('1 час')]];
 
 function setScenarios(list) {
   S.scenarios = list || [];
@@ -330,14 +330,19 @@ async function reloadScenarios() {
 
 function scenarioDialog(sc = {}) {
   const isNew = !sc.id;
-  const nameIn = h('input', { class: 'input', value: sc.name || '', maxlength: '120', placeholder: 'Например: очистить журналы', autocomplete: 'off' });
-  const descIn = h('input', { class: 'input', value: sc.desc || '', maxlength: '300', placeholder: 'Необязательно', autocomplete: 'off' });
+  const nameIn = h('input', { class: 'input', value: sc.name || '', maxlength: '120', placeholder: L('Например: очистить журналы'), autocomplete: 'off' });
+  const descIn = h('input', { class: 'input', value: sc.desc || '', maxlength: '300', placeholder: L('Необязательно'), autocomplete: 'off' });
   const scriptIn = h('textarea', { class: 'input mono scn-edit', rows: '12', spellcheck: 'false', autocomplete: 'off', placeholder: 'systemctl restart xray\nsystemctl is-active xray' });
   scriptIn.value = sc.script || '';
   const sudo = h('input', { type: 'checkbox', checked: !!sc.sudo });
   const tSel = h('select', { class: 'input' }, SCN_TIMEOUTS.map(([v, l]) => h('option', { value: String(v), selected: v === (sc.timeout || 600) }, l)));
-  const err = h('div', { class: 'bad-ink', style: { fontSize: '12.5px' } });
+  const pinned = h('input', { type: 'checkbox', checked: !!sc.pinned });
+  const quick = h('input', { type: 'checkbox', checked: !!sc.quick });
+  const defSrv = serverPicker((sc.servers || []).filter((id) => S.by.has(id)));
+  const err = h('div', { class: 'bad-ink', role: 'alert', style: { fontSize: '12.5px' } });
   let dirty = false;
+  defSrv.onChange(() => { dirty = true; });
+  [pinned, quick].forEach((i) => i.addEventListener('change', () => { dirty = true; }));
   [nameIn, descIn, scriptIn].forEach((i) => i.addEventListener('input', () => { dirty = true; }));
   scriptIn.addEventListener('keydown', (e) => {
     if (e.key === 'Tab' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey) {
@@ -349,7 +354,7 @@ function scenarioDialog(sc = {}) {
   });
   let tpl = null;
   if (isNew) {
-    const tplSel = h('select', { class: 'input' }, h('option', { value: '' }, 'Пустой'), SCN_TEMPLATES.map((t, i) => h('option', { value: String(i) }, t.name)));
+    const tplSel = h('select', { class: 'input' }, h('option', { value: '' }, L('Пустой')), SCN_TEMPLATES.map((t, i) => h('option', { value: String(i) }, t.name)));
     tplSel.addEventListener('change', () => {
       const t = SCN_TEMPLATES[Number(tplSel.value)];
       if (!t) return;
@@ -357,42 +362,45 @@ function scenarioDialog(sc = {}) {
       tSel.value = String(t.timeout || 600);
       dirty = true;
     });
-    tpl = h('label', { class: 'field' }, h('span', null, 'Начать с шаблона'), tplSel);
+    tpl = h('label', { class: 'field' }, h('span', null, L('Начать с шаблона')), tplSel);
   }
-  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, 'Сохранить');
+  const saveBtn = h('button', { class: 'btn primary', type: 'button' }, L('Сохранить'));
   saveBtn.addEventListener('click', async () => {
-    const body = { name: nameIn.value, desc: descIn.value, script: scriptIn.value, sudo: sudo.checked, timeout: Number(tSel.value) };
-    if (!body.name.trim()) { err.textContent = 'Укажите название'; nameIn.focus(); return; }
-    if (!body.script.trim()) { err.textContent = 'Пустой скрипт'; scriptIn.focus(); return; }
+    const body = { name: nameIn.value, desc: descIn.value, script: scriptIn.value, sudo: sudo.checked, timeout: Number(tSel.value), pinned: pinned.checked, quick: quick.checked, servers: defSrv.get() };
+    if (!body.name.trim()) { err.textContent = L('Укажите название'); nameIn.focus(); return; }
+    if (!body.script.trim()) { err.textContent = L('Впишите команду'); scriptIn.focus(); return; }
     saveBtn.disabled = true;
     try {
       await (isNew ? api('/scenarios', { method: 'POST', body }) : api('/scenarios/' + sc.id, { method: 'PUT', body }));
       dirty = false;
       m.close(true);
-      toast(isNew ? 'Сценарий сохранён' : 'Сценарий обновлён');
+      toast(isNew ? L('Команда сохранена') : L('Команда обновлена'));
       reloadScenarios();
     } catch (e) { err.textContent = e.message; }
     saveBtn.disabled = false;
   });
   const m = modal({
-    title: isNew ? 'Новый сценарий' : 'Сценарий',
+    title: isNew ? L('Новая сохранённая команда') : L('Сохранённая команда'),
     wide: true,
     body: h('div', { class: 'form' },
       tpl,
       h('div', { class: 'row' },
-        h('label', { class: 'field' }, h('span', null, 'Название'), nameIn),
-        h('label', { class: 'field' }, h('span', null, 'Описание'), descIn)),
-      h('label', { class: 'field' }, h('span', null, 'Скрипт'), scriptIn,
-        h('span', { class: 'hint' }, 'Выполняется через bash (или sh, если bash нет), без интерактивного ввода. Код выхода не 0 — ошибка.')),
+        h('label', { class: 'field' }, h('span', null, L('Название')), nameIn),
+        h('label', { class: 'field' }, h('span', null, L('Описание')), descIn)),
+      h('label', { class: 'field' }, h('span', null, L('Команда или скрипт')), scriptIn,
+        h('span', { class: 'hint' }, L('Выполняется через bash (или sh, если bash нет), без интерактивного ввода. Код выхода не 0 — ошибка.'))),
       h('div', { class: 'row' },
-        h('label', { class: 'check', style: { alignSelf: 'end', paddingBottom: '8px' } }, sudo, 'От root (через sudo, если вход не под root)'),
-        h('label', { class: 'field' }, h('span', null, 'Ограничение времени'), tSel)),
-      !isNew ? h('div', { class: 'hint' }, 'Задания в расписании хранят на сервере свою копию скрипта — после правки сценария запланируйте его заново.') : null,
+        h('label', { class: 'check', style: { alignSelf: 'end', paddingBottom: '8px' } }, sudo, L('От root (через sudo, если вход не под root)')),
+        h('label', { class: 'field' }, h('span', null, L('Ограничение времени')), tSel)),
+      h('label', { class: 'check' }, pinned, L('Закрепить: кнопка в «Командах», на странице каждого сервера и в палитре')),
+      h('label', { class: 'check' }, quick, L('Запускать без окна подтверждения, когда серверы уже выбраны')),
+      h('div', { class: 'field' }, h('span', null, L('Серверы по умолчанию '), h('span', { class: 'muted' }, L('— необязательно; со страницы сервера команда всегда идёт на него'))), defSrv.el),
+      !isNew ? h('div', { class: 'hint' }, L('Задания в расписании хранят на сервере свою копию скрипта — после правки команды запланированные задания нужно пересоздать.')) : null,
       err),
-    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Отмена'), saveBtn],
+    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Отмена')), saveBtn],
     beforeClose: () => {
       if (!dirty) return true;
-      confirmDialog({ title: 'Закрыть без сохранения?', text: 'Изменения в сценарии будут потеряны.', ok: 'Закрыть', danger: true }).then((ok) => { if (ok) m.close(true); });
+      confirmDialog({ title: L('Закрыть без сохранения?'), text: L('Изменения в команде будут потеряны.'), ok: L('Закрыть'), danger: true }).then((ok) => { if (ok) m.close(true); });
       return false;
     },
   });
@@ -400,46 +408,58 @@ function scenarioDialog(sc = {}) {
 
 async function deleteScenario(sc) {
   const ok = await confirmDialog({
-    title: `Удалить сценарий «${sc.name}»?`,
-    text: 'Задания в расписании, созданные из него, продолжат работать: копия скрипта лежит на сервере. Их можно удалить на странице «Расписание».',
-    ok: 'Удалить', danger: true,
+    title: L('Удалить команду «{0}»?', sc.name),
+    text: L('Задания в расписании, созданные из него, продолжат работать: копия скрипта лежит на сервере. Их можно удалить на странице «Расписание».'),
+    ok: L('Удалить'), danger: true,
   });
   if (!ok) return;
-  try { await api('/scenarios/' + sc.id, { method: 'DELETE' }); toast('Сценарий удалён'); reloadScenarios(); } catch (e) { toast(e.message, 'bad'); }
+  try { await api('/scenarios/' + sc.id, { method: 'DELETE' }); toast(L('Команда удалена')); reloadScenarios(); } catch (e) { toast(e.message, 'bad'); }
 }
 
-function runScenarioDialog(sc) {
-  const last = store.get('scnSel.' + sc.id, null) || store.get('cmdSel', []);
+// runScenario запускает сохранённую команду: сразу, если серверы известны и подтверждение отключено, иначе через окно.
+function runScenario(sc, ids) {
+  const live = (ids || []).filter((id) => S.by.has(id));
+  if (sc.quick && live.length) startScenarioRun(sc, live);
+  else runScenarioDialog(sc, live.length ? live : null);
+}
+
+async function saveScenarioPatch(sc, patch) {
+  const body = { name: sc.name, desc: sc.desc || '', script: sc.script, sudo: !!sc.sudo, timeout: sc.timeout || 0, pinned: !!sc.pinned, quick: !!sc.quick, servers: sc.servers || [], ...patch };
+  try { await api('/scenarios/' + sc.id, { method: 'PUT', body }); reloadScenarios(); } catch (e) { toast(e.message, 'bad'); }
+}
+
+function runScenarioDialog(sc, pre) {
+  const last = pre || (sc.servers && sc.servers.length ? sc.servers : store.get('scnSel.' + sc.id, null) || store.get('cmdSel', []));
   const picker = serverPicker(last.filter((id) => S.by.has(id)));
-  const runBtn = h('button', { class: 'btn primary', type: 'button' }, 'Запустить');
+  const runBtn = h('button', { class: 'btn primary', type: 'button' }, L('Запустить'));
   const upd = () => {
     const n = picker.get().length;
     runBtn.disabled = !n;
-    runBtn.textContent = n > 1 ? `Запустить на ${n} ${Fmt.plural(n, 'сервере', 'серверах', 'серверах')}` : 'Запустить';
+    runBtn.textContent = n > 1 ? L('Запустить на {0} {1}', n, Fmt.plural(n, 'сервере', 'серверах', 'серверах')) : L('Запустить');
   };
   picker.onChange(upd);
   upd();
   runBtn.addEventListener('click', () => {
     const ids = picker.get();
-    store.set('scnSel.' + sc.id, ids);
+    if (!pre) store.set('scnSel.' + sc.id, ids);
     m.close();
     startScenarioRun(sc, ids);
   });
   const lines = sc.script.split('\n');
   const m = modal({
-    title: `Запустить «${sc.name}»`,
+    title: L('Запустить «{0}»', sc.name),
     wide: true,
     body: h('div', { class: 'form' },
-      h('div', { class: 'field' }, h('span', null, 'Серверы'), picker.el),
-      h('details', { class: 'scn-details' }, h('summary', null, `Скрипт · ${lines.length} ${Fmt.plural(lines.length, 'строка', 'строки', 'строк')}`), h('pre', { class: 'pre' }, sc.script)),
-      sc.sudo ? h('div', { class: 'alert warn' }, icon('warn'), h('div', null, 'Сценарий выполнится от root.')) : null),
-    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Отмена'), runBtn],
+      h('div', { class: 'field' }, h('span', null, L('Серверы')), picker.el),
+      h('details', { class: 'scn-details' }, h('summary', null, L('Скрипт · {0} {1}', lines.length, Fmt.plural(lines.length, 'строка', 'строки', 'строк'))), h('pre', { class: 'pre' }, sc.script)),
+      sc.sudo ? h('div', { class: 'alert warn' }, icon('warn'), h('div', null, L('Команда выполнится от root.'))) : null),
+    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Отмена')), runBtn],
   });
 }
 
 function startScenarioRun(sc, ids) {
   if (!ids.length) return;
-  const title = h('div', { class: 'run-title' }, icon('play'), h('b', null, sc.name), sc.sudo ? h('span', { class: 'tag' }, 'от root') : null);
+  const title = h('div', { class: 'run-title' }, icon('play'), h('b', null, sc.name), sc.sudo ? h('span', { class: 'tag' }, L('от root')) : null);
   const r = runCard({
     title, ids,
     body: { cmd: sc.script, sudo: !!sc.sudo, timeout: sc.timeout || 600 },
@@ -447,65 +467,17 @@ function startScenarioRun(sc, ids) {
   });
   S.scnRuns.unshift(r);
   if (S.scnRuns.length > 30) S.scnRuns.pop().el.remove();
-  if (S.page && S.page.kind === 'scenarios') S.page.runsEl.prepend(r.el);
-  else location.hash = '#/scenarios';
-}
-
-function scenarioCard(sc) {
-  const lines = sc.script.split('\n');
-  const preview = lines.slice(0, 6).join('\n') + (lines.length > 6 ? '\n…' : '');
-  const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': `Ещё: ${sc.name}`, title: 'Ещё' }, icon('dots'));
-  more.addEventListener('click', () => popMenu(more, [
-    { label: 'Изменить', run: () => scenarioDialog(sc) },
-    { label: 'Сделать копию', run: () => scenarioDialog({ ...sc, id: undefined, name: sc.name + ' (копия)' }) },
-    '-',
-    { label: 'Удалить', danger: true, run: () => deleteScenario(sc) },
-  ]));
-  return h('div', { class: 'card scn' },
-    h('div', { class: 'scn-head' },
-      h('div', { style: { minWidth: 0, flex: 1 } }, h('div', { class: 'card-title' }, sc.name), sc.desc ? h('div', { class: 'card-sub' }, sc.desc) : null),
-      sc.sudo ? h('span', { class: 'tag' }, 'от root') : null),
-    h('pre', { class: 'scn-script' }, preview),
-    h('div', { class: 'scn-actions' },
-      h('button', { class: 'btn sm primary', type: 'button', onclick: () => runScenarioDialog(sc) }, icon('play'), 'Запустить…'),
-      h('button', { class: 'btn sm', type: 'button', onclick: () => scheduleDialog({ kind: 'scenario', target: sc.id }) }, icon('clock'), 'По расписанию…'),
-      h('span', { class: 'grow' }), more));
-}
-
-class ScenariosPage {
-  constructor() {
-    this.kind = 'scenarios';
-    this.el = h('div', { class: 'page' });
-    this.listEl = h('div');
-    this.runsEl = h('div', { class: 'runs' });
-    this.el.append(
-      h('div', { class: 'page-head' },
-        h('div', { class: 'head-main' },
-          h('h1', null, 'Сценарии'),
-          h('div', { class: 'head-meta' }, h('span', null, 'Сохранённые скрипты: запуск на нескольких серверах сразу или по расписанию'))),
-        h('div', { class: 'head-actions' },
-          h('button', { class: 'btn primary', type: 'button', onclick: () => scenarioDialog() }, icon('plus'), 'Новый сценарий'))),
-      this.listEl, this.runsEl);
-    for (const r of S.scnRuns) this.runsEl.append(r.el);
-    this.render();
-  }
-
-  onScenarios() { this.render(); }
-  destroy() {}
-
-  render() {
-    const list = S.scenarios.slice().sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-    this.listEl.replaceChildren(list.length
-      ? h('div', { class: 'scn-grid' }, list.map((sc) => scenarioCard(sc)))
-      : h('div', { class: 'card empty' }, h('b', null, 'Сценариев пока нет'),
-        'Сохраните скрипт, который часто запускаете: очистка журналов, перезапуск служб, проверка места. Есть готовые шаблоны.',
-        h('div', { style: { marginTop: '14px' } }, h('button', { class: 'btn primary', type: 'button', onclick: () => scenarioDialog() }, icon('plus'), 'Новый сценарий'))));
-  }
+  if (S.page && S.page.kind === 'commands') { S.page.runsEl.prepend(r.el); r.el.scrollIntoView({ block: 'nearest' }); return; }
+  // запуск не из раздела «Команды» (страница сервера, палитра): результат — в окне, не уводя со страницы
+  const m = modal({
+    title: sc.name, wide: true, body: h('div', { class: 'run-modal' }, r.el),
+    foot: [h('a', { class: 'btn', href: '#/commands', onclick: () => m.close() }, L('Открыть в «Командах»')), h('button', { class: 'btn primary', type: 'button', onclick: () => m.close() }, L('Закрыть'))],
+  });
 }
 
 /* ================= расписание ================= */
-const KIND_TEXT = { reboot: 'Перезагрузка сервера', service: 'Перезапуск службы', scenario: 'Сценарий' };
-const WEEK = [['Mon', 'пн'], ['Tue', 'вт'], ['Wed', 'ср'], ['Thu', 'чт'], ['Fri', 'пт'], ['Sat', 'сб'], ['Sun', 'вс']];
+const KIND_TEXT = { reboot: L('Перезагрузка сервера'), service: L('Перезапуск службы'), scenario: L('Сохранённая команда') };
+const WEEK = [['Mon', L('пн')], ['Tue', L('вт')], ['Wed', L('ср')], ['Thu', L('чт')], ['Fri', L('пт')], ['Sat', L('сб')], ['Sun', L('вс')]];
 
 function specText(t) {
   const m = /^(?:([A-Za-z,]+) )?(\S+) (\d\d:\d\d):\d\d(?: (\S+))?$/.exec(t.spec || '');
@@ -513,41 +485,41 @@ function specText(t) {
   const [, days, date, time, tz] = m;
   const tzs = tz && tz !== BROWSER_TZ ? ` (${tz})` : '';
   const dm = /^(\d{4})-(\d\d)-(\d\d)$/.exec(date);
-  if (dm) return `один раз, ${new Date(+dm[1], +dm[2] - 1, +dm[3]).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })} в ${time}${tzs}`;
+  if (dm) return L('один раз, {0} в {1}{2}', new Date(+dm[1], +dm[2] - 1, +dm[3]).toLocaleDateString(I18N.locale, { day: 'numeric', month: 'long' }), time, tzs);
   if (days) {
     const set = days.split(',');
-    if (set.length === 7) return `каждый день в ${time}${tzs}`;
-    return WEEK.filter(([k]) => set.includes(k)).map(([, v]) => v).join(', ') + ` в ${time}${tzs}`;
+    if (set.length === 7) return L('каждый день в {0}{1}', time, tzs);
+    return WEEK.filter(([k]) => set.includes(k)).map(([, v]) => v).join(', ') + L(' в {0}{1}', time, tzs);
   }
   const md = /^\*-\*-(\d\d)$/.exec(date);
-  if (md) return `${Number(md[1])}-го числа каждого месяца в ${time}${tzs}`;
-  return `каждый день в ${time}${tzs}`;
+  if (md) return L('{0}-го числа каждого месяца в {1}{2}', Number(md[1]), time, tzs);
+  return L('каждый день в {0}{1}', time, tzs);
 }
 
 function taskTarget(t) {
   if (t.kind === 'service') return (t.target || '').replace(/\.service$/, '');
-  if (t.kind === 'scenario') return t.targetName || 'сценарий';
+  if (t.kind === 'scenario') return t.targetName || L('команда');
   return '';
 }
 
 async function taskAction(sid, t, action, after) {
   try {
     await api(`/servers/${encodeURIComponent(sid)}/schedule/${t.id}/action`, { method: 'POST', body: { action } });
-    toast(action === 'run' ? `«${t.name}» запущено` : action === 'pause' ? `«${t.name}» на паузе` : `«${t.name}» снова по расписанию`);
+    toast(action === 'run' ? L('«{0}» запущено', t.name) : action === 'pause' ? L('«{0}» на паузе', t.name) : L('«{0}» снова по расписанию', t.name));
   } catch (e) { toast(e.message, 'bad'); }
   if (after) after();
 }
 
 async function deleteTask(sid, t, after) {
   const ok = await confirmDialog({
-    title: `Удалить задание «${t.name}»?`,
-    text: `Сервер: ${srvName(sid)}. Таймер и его файлы будут удалены с сервера.`,
-    ok: 'Удалить', danger: true,
+    title: L('Удалить задание «{0}»?', t.name),
+    text: L('Сервер: {0}. Таймер и его файлы будут удалены с сервера.', srvName(sid)),
+    ok: L('Удалить'), danger: true,
   });
   if (!ok) return;
   try {
     await api(`/servers/${encodeURIComponent(sid)}/schedule/${t.id}`, { method: 'DELETE' });
-    toast('Задание удалено');
+    toast(L('Задание удалено'));
   } catch (e) { toast(e.message, 'bad'); }
   if (after) after();
 }
@@ -565,22 +537,22 @@ function localLog(text) {
 }
 
 function taskLogDialog(sid, t) {
-  const pre = h('pre', { class: 'cout', style: { maxHeight: '60vh', margin: 0 } }, 'Загрузка…');
+  const pre = h('pre', { class: 'cout', style: { maxHeight: '60vh', margin: 0 } }, L('Загрузка…'));
   const m = modal({
-    title: `Журнал: ${t.name}`, lead: `${srvName(sid)} · последние записи journalctl`, wide: true, body: pre,
-    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Закрыть')],
+    title: L('Журнал: {0}', t.name), lead: L('{0} · последние записи journalctl', srvName(sid)), wide: true, body: pre,
+    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Закрыть'))],
   });
   api(`/servers/${encodeURIComponent(sid)}/schedule/${t.id}/log`)
-    .then((r) => { pre.textContent = r.log ? localLog(r.log) : 'Записей пока нет — задание ещё не запускалось.'; })
+    .then((r) => { pre.textContent = r.log ? localLog(r.log) : L('Записей пока нет — задание ещё не запускалось.'); })
     .catch((e) => { pre.textContent = e.message; });
 }
 
 function resultBadge(t) {
-  if (t.running) return h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + 'выполняется');
-  if (!t.ran) return h('span', { class: 'muted' }, t.kind === 'reboot' && t.repeat === 'once' && !t.next ? '—' : 'ещё не запускалось');
+  if (t.running) return h('span', { class: 'muted' }, h('span', { class: 'spinner' }), NB + L('выполняется'));
+  if (!t.ran) return h('span', { class: 'muted' }, t.kind === 'reboot' && t.repeat === 'once' && !t.next ? '—' : L('ещё не запускалось'));
   const ok = t.result === 'success';
   return h('div', null, whenText(t.ran * 1000),
-    h('div', null, h('span', { class: 'badge ' + (ok ? 'good' : 'crit') }, ok ? 'успешно' : t.result === 'exit-code' ? `ошибка, код ${t.exitCode}` : t.result === 'timeout' ? 'не уложилось во время' : t.result || 'ошибка')));
+    h('div', null, h('span', { class: 'badge ' + (ok ? 'good' : 'crit') }, ok ? L('успешно') : t.result === 'exit-code' ? L('ошибка, код {0}', t.exitCode) : t.result === 'timeout' ? L('не уложилось во время') : t.result || L('ошибка'))));
 }
 
 function scheduleView({ ids, showServer }) {
@@ -589,9 +561,9 @@ function scheduleView({ ids, showServer }) {
   const tbody = h('tbody');
   const table = h('div', { class: 'tbl-wrap' }, h('table', { class: 'tbl sched' },
     h('thead', null, h('tr', null,
-      showServer ? h('th', null, 'Сервер') : null,
-      h('th', null, 'Задание'), h('th', null, 'Когда'), h('th', null, 'Следующий запуск'), h('th', null, 'Последний запуск'),
-      h('th', null, h('span', { class: 'sr-only' }, 'Действия')))),
+      showServer ? h('th', null, L('Сервер')) : null,
+      h('th', null, L('Задание')), h('th', null, L('Когда')), h('th', null, L('Следующий запуск')), h('th', null, L('Последний запуск')),
+      h('th', null, h('span', { class: 'sr-only' }, L('Действия'))))),
     tbody));
   const emptyBox = h('div');
   const el = h('div', null, errBox, emptyBox, table);
@@ -600,11 +572,11 @@ function scheduleView({ ids, showServer }) {
     if (st.busy) return;
     st.busy = true;
     const list = ids();
-    if (!st.data.size) tbody.replaceChildren(h('tr', null, h('td', { colspan: showServer ? '6' : '5', class: 'empty' }, h('span', { class: 'spinner' }), NB + ' Загрузка расписания…')));
+    if (!st.data.size) tbody.replaceChildren(h('tr', null, h('td', { colspan: showServer ? '6' : '5', class: 'empty' }, h('span', { class: 'spinner' }), NB + L(' Загрузка расписания…'))));
     const fresh = new Map();
     await Promise.all(list.map(async (sid) => {
       const s = S.by.get(sid);
-      if (s && s.status === 'offline') { fresh.set(sid, { error: 'нет связи' }); return; }
+      if (s && s.status === 'offline') { fresh.set(sid, { error: L('нет связи') }); return; }
       try { fresh.set(sid, await api(`/servers/${encodeURIComponent(sid)}/schedule`)); } catch (e) { fresh.set(sid, { error: e.message }); }
     }));
     st.data = fresh;
@@ -624,35 +596,35 @@ function scheduleView({ ids, showServer }) {
       h('div', null, showServer ? h('b', null, srvName(sid) + ': ') : null, e))));
     if (!showServer) {
       const d = st.data.values().next().value;
-      if (d && !d.error && !d.privileged) errBox.append(h('div', { class: 'alert warn', style: { marginBottom: '10px' } }, icon('warn'), h('div', null, 'Нет прав root или sudo без пароля — создавать задания на этом сервере нельзя.')));
+      if (d && !d.error && !d.privileged) errBox.append(h('div', { class: 'alert warn', style: { marginBottom: '10px' } }, icon('warn'), h('div', null, L('Нет прав root или sudo без пароля — создавать задания на этом сервере нельзя.'))));
     }
     table.hidden = !rows.length;
-    emptyBox.replaceChildren(rows.length || (st.data.size && errs.length === st.data.size) ? '' : h('div', { class: 'card empty' }, h('b', null, 'Заданий пока нет'),
-      'Можно запланировать перезагрузку, перезапуск службы или сценарий — один раз или регулярно.'));
+    emptyBox.replaceChildren(rows.length || (st.data.size && errs.length === st.data.size) ? '' : h('div', { class: 'card empty' }, h('b', null, L('Заданий пока нет')),
+      L('Можно запланировать перезагрузку, перезапуск службы или сохранённую команду — один раз или регулярно.')));
     tbody.replaceChildren(...rows.map(([sid, t]) => {
       const target = taskTarget(t);
-      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': `Ещё: ${t.name}`, title: 'Ещё' }, icon('dots'));
+      const more = h('button', { class: 'btn sm icon-only', type: 'button', 'aria-label': L('Ещё: {0}', t.name), title: L('Ещё') }, icon('dots'));
       more.addEventListener('click', () => {
         // у разового задания, время которого прошло, ставить на паузу нечего
         const spent = t.repeat === 'once' && t.enabled && !t.next;
         const items = [
-          t.kind !== 'reboot' ? { label: 'Запустить сейчас', run: () => taskAction(sid, t, 'run', () => setTimeout(load, 1500)) } : null,
-          spent ? null : t.enabled ? { label: 'Приостановить', run: () => taskAction(sid, t, 'pause', load) } : { label: 'Возобновить', run: () => taskAction(sid, t, 'resume', load) },
+          t.kind !== 'reboot' ? { label: L('Запустить сейчас'), run: () => taskAction(sid, t, 'run', () => setTimeout(load, 1500)) } : null,
+          spent ? null : t.enabled ? { label: L('Приостановить'), run: () => taskAction(sid, t, 'pause', load) } : { label: L('Возобновить'), run: () => taskAction(sid, t, 'resume', load) },
         ].filter(Boolean);
-        popMenu(more, [...items, ...(items.length ? ['-'] : []), { label: 'Удалить', danger: true, run: () => deleteTask(sid, t, load) }]);
+        popMenu(more, [...items, ...(items.length ? ['-'] : []), { label: L('Удалить'), danger: true, run: () => deleteTask(sid, t, load) }]);
       });
       let next;
-      if (!t.enabled) next = h('span', { class: 'badge warn' }, 'на паузе');
+      if (!t.enabled) next = h('span', { class: 'badge warn' }, L('на паузе'));
       else if (t.next) next = h('div', null, whenText(t.next * 1000), h('div', { class: 'desc' }, relText(t.next * 1000)));
-      else next = h('span', { class: 'muted' }, t.repeat === 'once' ? 'время прошло' : '—');
+      else next = h('span', { class: 'muted' }, t.repeat === 'once' ? L('время прошло') : '—');
       return h('tr', { class: t.enabled ? '' : 'is-paused' },
         showServer ? h('td', null, h('a', { class: 'pchip', href: `#/s/${encodeURIComponent(sid)}/schedule` }, srvName(sid))) : null,
         h('td', { class: 'name-cell' }, h('b', null, t.name),
-          h('div', { class: 'desc' }, KIND_TEXT[t.kind] || t.kind, target && target !== t.name ? ': ' + target : '', t.runAs ? ` · от ${t.runAs}` : '')),
+          h('div', { class: 'desc' }, KIND_TEXT[t.kind] || t.kind, target && target !== t.name ? ': ' + target : '', t.runAs ? L(' · от {0}', t.runAs) : '')),
         h('td', { class: 'ink2' }, specText(t)),
         h('td', null, next),
         h('td', null, resultBadge(t)),
-        h('td', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', onclick: () => taskLogDialog(sid, t) }, 'Журнал'), more));
+        h('td', { class: 'actions' }, h('button', { class: 'btn sm', type: 'button', onclick: () => taskLogDialog(sid, t) }, L('Журнал')), more));
     }));
   }
 
@@ -664,13 +636,13 @@ function scheduleDialog(opts = {}) {
   let kind = opts.kind || 'reboot';
   let repeat = 'daily';
   const days = new Set(['Mon']);
-  const nameIn = h('input', { class: 'input', maxlength: '120', placeholder: 'Необязательно — подставится само', autocomplete: 'off' });
-  const kindSeg = seg([['reboot', 'Перезагрузить сервер'], ['service', 'Перезапустить службу'], ['scenario', 'Выполнить сценарий']], kind, (v) => { kind = v; sync(); });
+  const nameIn = h('input', { class: 'input', maxlength: '120', placeholder: L('Необязательно — подставится само'), autocomplete: 'off' });
+  const kindSeg = seg([['reboot', L('Перезагрузить сервер')], ['service', L('Перезапустить службу')], ['scenario', L('Выполнить команду')]], kind, (v) => { kind = v; sync(); });
   const dl = 'svc-dl-' + Math.random().toString(36).slice(2, 8);
   const svcList = h('datalist', { id: dl });
-  const svcIn = h('input', { class: 'input mono', list: dl, placeholder: 'например, xray', autocomplete: 'off', spellcheck: 'false', value: opts.kind === 'service' ? (opts.target || '').replace(/\.service$/, '') : '' });
+  const svcIn = h('input', { class: 'input mono', list: dl, placeholder: L('например, xray'), autocomplete: 'off', spellcheck: 'false', value: opts.kind === 'service' ? (opts.target || '').replace(/\.service$/, '') : '' });
   const scnSel = h('select', { class: 'input' }, S.scenarios.map((sc) => h('option', { value: sc.id, selected: sc.id === opts.target }, sc.name)));
-  const repSeg = seg([['once', 'Один раз'], ['daily', 'Каждый день'], ['weekly', 'По дням недели'], ['monthly', 'Раз в месяц']], repeat, (v) => { repeat = v; sync(); });
+  const repSeg = seg([['once', L('Один раз')], ['daily', L('Каждый день')], ['weekly', L('По дням недели')], ['monthly', L('Раз в месяц')]], repeat, (v) => { repeat = v; sync(); });
   const tm = new Date(Date.now() + 86400e3);
   const dateIn = h('input', { class: 'input', type: 'date', value: `${tm.getFullYear()}-${pad2(tm.getMonth() + 1)}-${pad2(tm.getDate())}` });
   const timeIn = h('input', { class: 'input', type: 'time', value: '04:00' });
@@ -685,16 +657,16 @@ function scheduleDialog(opts = {}) {
     return b;
   });
   const picker = serverPicker(opts.servers || []);
-  const svcField = h('label', { class: 'field' }, h('span', null, 'Служба'), svcIn, svcList);
-  const scnField = h('label', { class: 'field' }, h('span', null, 'Сценарий'), S.scenarios.length ? scnSel
-    : h('div', { class: 'hint' }, 'Сценариев пока нет — создайте его на странице «Сценарии».'));
-  const dateField = h('label', { class: 'field' }, h('span', null, 'Дата'), dateIn);
-  const daysField = h('div', { class: 'field' }, h('span', null, 'Дни недели'), h('div', { class: 'days' }, dayBtns));
-  const mdayField = h('label', { class: 'field' }, h('span', null, 'Число месяца (1–28)'), mdayIn);
+  const svcField = h('label', { class: 'field' }, h('span', null, L('Служба')), svcIn, svcList);
+  const scnField = h('label', { class: 'field' }, h('span', null, L('Сохранённая команда')), S.scenarios.length ? scnSel
+    : h('div', { class: 'hint' }, L('Сохранённых команд пока нет — создайте её в разделе «Команды».')));
+  const dateField = h('label', { class: 'field' }, h('span', null, L('Дата')), dateIn);
+  const daysField = h('div', { class: 'field' }, h('span', null, L('Дни недели')), h('div', { class: 'days' }, dayBtns));
+  const mdayField = h('label', { class: 'field' }, h('span', null, L('Число месяца (1–28)')), mdayIn);
   const warn = h('div');
   const err = h('div', { class: 'bad-ink', style: { fontSize: '12.5px' } });
   const results = h('div');
-  const okBtn = h('button', { class: 'btn primary', type: 'button' }, 'Запланировать');
+  const okBtn = h('button', { class: 'btn primary', type: 'button' }, L('Запланировать'));
 
   let svcLoaded = false;
   async function loadServices() {
@@ -718,9 +690,9 @@ function scheduleDialog(opts = {}) {
     if (kind === 'service') loadServices();
     const n = picker.get().length;
     warn.replaceChildren(kind === 'reboot'
-      ? h('div', { class: 'alert warn' }, icon('warn'), h('div', null, `${n > 1 ? 'Серверы будут перезагружены' : 'Сервер будет перезагружен'} в это время без дополнительного подтверждения. Если панель в этот момент выключена — всё равно: задание выполняет сам сервер.`))
+      ? h('div', { class: 'alert warn' }, icon('warn'), h('div', null, L('{0} в это время без дополнительного подтверждения. Если панель в этот момент выключена — всё равно: задание выполняет сам сервер.', n > 1 ? L('Серверы будут перезагружены') : L('Сервер будет перезагружен'))))
       : '');
-    okBtn.textContent = n > 1 ? `Запланировать на ${n} ${Fmt.plural(n, 'сервере', 'серверах', 'серверах')}` : 'Запланировать';
+    okBtn.textContent = n > 1 ? L('Запланировать на {0} {1}', n, Fmt.plural(n, 'сервере', 'серверах', 'серверах')) : L('Запланировать');
     okBtn.disabled = !n;
   }
   picker.onChange(sync);
@@ -728,18 +700,18 @@ function scheduleDialog(opts = {}) {
   okBtn.addEventListener('click', async () => {
     err.textContent = '';
     const ids = picker.get();
-    if (!ids.length) { err.textContent = 'Выберите сервер'; return; }
+    if (!ids.length) { err.textContent = L('Выберите сервер'); return; }
     let target = '';
     if (kind === 'service') {
       const v = svcIn.value.trim();
-      if (!v) { err.textContent = 'Укажите службу'; svcIn.focus(); return; }
+      if (!v) { err.textContent = L('Укажите службу'); svcIn.focus(); return; }
       target = v.endsWith('.service') ? v : v + '.service';
     } else if (kind === 'scenario') {
-      if (!S.scenarios.length) { err.textContent = 'Нет сценариев'; return; }
+      if (!S.scenarios.length) { err.textContent = L('Нет сохранённых команд'); return; }
       target = scnSel.value;
     }
-    if (!timeIn.value) { err.textContent = 'Укажите время'; return; }
-    if (repeat === 'weekly' && !days.size) { err.textContent = 'Выберите дни недели'; return; }
+    if (!timeIn.value) { err.textContent = L('Укажите время'); return; }
+    if (repeat === 'weekly' && !days.size) { err.textContent = L('Выберите дни недели'); return; }
     const body = {
       name: nameIn.value, kind, target, repeat,
       date: dateIn.value, time: timeIn.value.slice(0, 5),
@@ -748,7 +720,7 @@ function scheduleDialog(opts = {}) {
     };
     okBtn.disabled = true;
     const prev = okBtn.textContent;
-    okBtn.textContent = 'Создаю…';
+    okBtn.textContent = L('Создаю…');
     const res = await Promise.all(ids.map(async (sid) => {
       try { await api(`/servers/${encodeURIComponent(sid)}/schedule`, { method: 'POST', body }); return [sid, null]; } catch (e) { return [sid, e.message]; }
     }));
@@ -761,28 +733,28 @@ function scheduleDialog(opts = {}) {
     if (S.page && S.page.onSchedule) S.page.onSchedule();
     if (!bad.length) {
       m.close();
-      toast(good.length > 1 ? `Задание создано на ${good.length} ${Fmt.plural(good.length, 'сервере', 'серверах', 'серверах')}` : 'Задание создано');
+      toast(good.length > 1 ? L('Задание создано на {0} {1}', good.length, Fmt.plural(good.length, 'сервере', 'серверах', 'серверах')) : L('Задание создано'));
       return;
     }
     results.replaceChildren(h('div', { class: 'alert bad' }, h('div', null,
-      good.length ? h('div', null, 'Создано: ', good.map(([sid]) => srvName(sid)).join(', ')) : null,
+      good.length ? h('div', null, L('Создано: '), good.map(([sid]) => srvName(sid)).join(', ')) : null,
       bad.map(([sid, e]) => h('div', null, h('b', null, srvName(sid) + ': '), e)))));
     sync();
   });
 
   const m = modal({
-    title: 'Запланировать',
+    title: L('Запланировать'),
     wide: true,
     body: h('div', { class: 'form' },
-      h('div', { class: 'field' }, h('span', null, 'Что сделать'), kindSeg.el),
+      h('div', { class: 'field' }, h('span', null, L('Что сделать')), kindSeg.el),
       svcField, scnField,
-      h('div', { class: 'field' }, h('span', null, 'Когда'), repSeg.el),
-      h('div', { class: 'row' }, dateField, daysField, mdayField, h('label', { class: 'field' }, h('span', null, 'Время'), timeIn)),
-      h('div', { class: 'hint' }, `Время — по вашему часовому поясу (${BROWSER_TZ}); сервер пересчитает его сам.`),
-      h('div', { class: 'field' }, h('span', null, 'Серверы'), picker.el),
-      h('label', { class: 'field' }, h('span', null, 'Название'), nameIn),
+      h('div', { class: 'field' }, h('span', null, L('Когда')), repSeg.el),
+      h('div', { class: 'row' }, dateField, daysField, mdayField, h('label', { class: 'field' }, h('span', null, L('Время')), timeIn)),
+      h('div', { class: 'hint' }, L('Время — по вашему часовому поясу ({0}); сервер пересчитает его сам.', BROWSER_TZ)),
+      h('div', { class: 'field' }, h('span', null, L('Серверы')), picker.el),
+      h('label', { class: 'field' }, h('span', null, L('Название')), nameIn),
       warn, err, results),
-    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Отмена'), okBtn],
+    foot: [h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, L('Отмена')), okBtn],
   });
   sync();
 }
@@ -792,10 +764,10 @@ function scheduleTab(page) {
   const view = scheduleView({ ids: () => [id] });
   const el = h('div', null,
     h('div', { class: 'toolbar' },
-      h('span', { class: 'ink2', style: { fontSize: '13px' } }, 'Задания хранятся на сервере как таймеры systemd и выполняются, даже если панель выключена'),
+      h('span', { class: 'ink2', style: { fontSize: '13px' } }, L('Задания хранятся на сервере как таймеры systemd и выполняются, даже если панель выключена')),
       h('span', { class: 'grow' }),
-      h('button', { class: 'btn sm', type: 'button', onclick: () => view.load() }, icon('refresh'), 'Обновить'),
-      h('button', { class: 'btn sm primary', type: 'button', onclick: () => scheduleDialog({ servers: [id], onDone: view.load }) }, icon('plus'), 'Запланировать')),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => view.load() }, icon('refresh'), L('Обновить')),
+      h('button', { class: 'btn sm primary', type: 'button', onclick: () => scheduleDialog({ servers: [id], onDone: view.load }) }, icon('plus'), L('Запланировать'))),
     view.el);
   return { el, onSchedule: view.load };
 }
@@ -808,11 +780,11 @@ class SchedulePage {
     this.el.append(
       h('div', { class: 'page-head' },
         h('div', { class: 'head-main' },
-          h('h1', null, 'Расписание'),
-          h('div', { class: 'head-meta' }, h('span', null, 'Задания хранятся на серверах как таймеры systemd и выполняются, даже если панель выключена'))),
+          h('h1', null, L('Расписание')),
+          h('div', { class: 'head-meta' }, h('span', null, L('Задания хранятся на серверах как таймеры systemd и выполняются, даже если панель выключена')))),
         h('div', { class: 'head-actions' },
-          h('button', { class: 'btn', type: 'button', onclick: () => this.view.load() }, icon('refresh'), 'Обновить'),
-          h('button', { class: 'btn primary', type: 'button', onclick: () => scheduleDialog({ onDone: () => this.view.load() }) }, icon('plus'), 'Запланировать'))),
+          h('button', { class: 'btn', type: 'button', onclick: () => this.view.load() }, icon('refresh'), L('Обновить')),
+          h('button', { class: 'btn primary', type: 'button', onclick: () => scheduleDialog({ onDone: () => this.view.load() }) }, icon('plus'), L('Запланировать')))),
       this.view.el);
   }
 
