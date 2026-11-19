@@ -12,7 +12,7 @@ const Palette = (() => {
     const out = [];
     const r = parseRoute();
     const cur = r.view === 'server' ? S.by.get(r.id) : null;
-    const tabsFor = (s) => TAB_DEFS.filter(([k]) => k !== 'vpn' || !s.units || s.units.some((u) => u.vpn));
+    const tabsFor = (s) => TAB_DEFS.filter(([k]) => (k !== 'vpn' || !s.units || s.units.some((u) => u.vpn)) && (k !== 'vms' || (s.info && s.info.vm) || s.vms) && (k !== 'docker' || (s.info && s.info.docker)));
     const go = (hash) => () => { location.hash = hash; };
     const srvHash = (s, tab) => '#/s/' + encodeURIComponent(s.id) + (tab && tab !== 'overview' ? '/' + tab : '');
 

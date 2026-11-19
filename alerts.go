@@ -41,6 +41,7 @@ type AlertRules struct {
 	Temp     *Rule `json:"temp,omitempty"`  // перегрев дольше N мин; nil — по умолчанию (в старых настройках его нет)
 	Check    *Rule `json:"check,omitempty"` // сайт или порт не отвечает дольше N мин (checks.go); nil — по умолчанию
 	Cert     *Rule `json:"cert,omitempty"`  // сертификат истекает через N дней или не проходит проверку
+	VM       *Rule `json:"vm,omitempty"`    // виртуальная машина не работает дольше N мин (vm.go)
 	Recovery bool  `json:"recovery"`        // сообщать о восстановлении
 }
 
@@ -60,6 +61,7 @@ type AlertConfig struct {
 func defaultTempRule() *Rule  { return &Rule{On: true, Min: 5} }
 func defaultCheckRule() *Rule { return &Rule{On: true, Min: 3} }
 func defaultCertRule() *Rule  { return &Rule{On: true, Days: 14} }
+func defaultVMRule() *Rule    { return &Rule{On: true, Min: 2} }
 
 // fillRules подставляет значения по умолчанию для правил, которых нет в старых настройках.
 func fillRules(r *AlertRules, from AlertRules) {
@@ -71,6 +73,9 @@ func fillRules(r *AlertRules, from AlertRules) {
 	}
 	if r.Cert == nil {
 		r.Cert = from.Cert
+	}
+	if r.VM == nil {
+		r.VM = from.VM
 	}
 }
 
@@ -86,6 +91,7 @@ func defaultAlertConfig() AlertConfig {
 			Temp:     defaultTempRule(),
 			Check:    defaultCheckRule(),
 			Cert:     defaultCertRule(),
+			VM:       defaultVMRule(),
 			Recovery: true,
 		},
 		Channels: AlertChannels{MacOS: true},
@@ -422,6 +428,19 @@ func (al *Alerts) evaluate() {
 			}
 		}
 
+		// виртуальные машины: о той, что работала и перестала сама (не из
+		// панели), упала или встала на паузу. Список обновляется раз в минуту.
+		if sn := al.a.vms.snapshot(id); sn != nil && now.Sub(sn.at) < 3*time.Minute {
+			mark("vm")
+			if r.VM.On {
+				for _, v := range sn.vms {
+					if vmAlarming(v) {
+						add("vm", v.Key, fmt.Sprintf(L("ВМ %s не работает (%s)"), v.Name, vmStateText(v.State)), time.Duration(r.VM.Min*float64(time.Minute)))
+					}
+				}
+			}
+		}
+
 		// службы
 		if unitsAt.IsZero() || now.Sub(unitsAt) > 2*time.Minute {
 			continue
@@ -694,6 +713,12 @@ func recoveryText(f *Firing, now time.Time) string {
 		return L("VPN-служба ") + strings.TrimSuffix(f.Subject, ".service") + L(" снова работает (не работала ") + d + ")"
 	case "check":
 		return L("снова отвечает (не отвечал ") + d + ")"
+	case "vm":
+		name := f.Subject
+		if t, ok := strings.CutPrefix(f.Text, L("ВМ ")); ok {
+			name, _, _ = strings.Cut(t, L(" не работает"))
+		}
+		return L("ВМ ") + name + L(" снова работает (не работала ") + d + ")"
 	case "cert":
 		return L("сертификат ") + f.Subject + L(" в порядке")
 	case "temp":
@@ -1002,7 +1027,7 @@ func (a *App) handleAlertConfig(w http.ResponseWriter, r *http.Request) {
 	for _, x := range []struct {
 		r   Rule
 		pct bool
-	}{{rr.Offline, false}, {rr.CPU, true}, {rr.Mem, true}, {rr.Disk, true}, {rr.VPN, false}, {*rr.Temp, false}, {*rr.Check, false}} {
+	}{{rr.Offline, false}, {rr.CPU, true}, {rr.Mem, true}, {rr.Disk, true}, {rr.VPN, false}, {*rr.Temp, false}, {*rr.Check, false}, {*rr.VM, false}} {
 		if err := validRule(x.r, x.pct); err != nil {
 			writeErr(w, 400, err.Error())
 			return

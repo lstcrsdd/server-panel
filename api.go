@@ -46,6 +46,8 @@ func (a *App) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/servers/{id}/exec", a.withMon(a.handleExec))
 	mux.HandleFunc("POST /api/servers/{id}/reboot", a.withMon(a.handleReboot))
 	mux.HandleFunc("GET /api/servers/{id}/vpn", a.withMon(a.handleVPN))
+	mux.HandleFunc("GET /api/servers/{id}/vms", a.withMon(a.handleVMs))
+	mux.HandleFunc("POST /api/servers/{id}/vms/action", a.withMon(a.handleVMAction))
 	mux.HandleFunc("GET /api/servers/{id}/term", a.withMon(a.handleTermList))
 	mux.HandleFunc("POST /api/servers/{id}/term", a.withMon(a.handleTermOpen))
 	mux.HandleFunc("GET /api/term/{tid}/stream", a.handleTermStream)

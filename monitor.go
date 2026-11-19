@@ -32,6 +32,7 @@ if [ "$(id -u)" = 0 ] || sudo -n true >/dev/null 2>&1; then echo sudo=1; else ec
 command -v systemctl >/dev/null 2>&1 && echo systemd=1
 command -v journalctl >/dev/null 2>&1 && echo journal=1
 command -v docker >/dev/null 2>&1 && echo docker=1
+{ command -v virsh || command -v qm || ls /usr/bin/qemu-system-* /usr/libexec/qemu-kvm || pgrep -f '` + qemuProcRe + `'; } >/dev/null 2>&1 && echo vm=1
 grep -qs '` + watchdogMark + `' /etc/systemd/system/server-panel-watchdog.timer && echo watchdog=1
 echo "ips=$(hostname -I 2>/dev/null || ip -o -4 addr show scope global 2>/dev/null | awk '{print $4}' | tr '\n' ' ')"
 echo "tz=$(cat /etc/timezone 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||')"
@@ -80,6 +81,7 @@ type Info struct {
 	Systemd  bool     `json:"systemd"`
 	Journal  bool     `json:"journal"`
 	Docker   bool     `json:"docker"`
+	VM       bool     `json:"vm,omitempty"` // есть QEMU/KVM, libvirt или Proxmox (vm.go)
 	IPs      []string `json:"ips"`
 	TZ       string   `json:"tz"`
 	Watchdog bool     `json:"watchdog,omitempty"` // на сервере стоит сторож панели
@@ -124,6 +126,8 @@ func parseInfo(lines []string) *Info {
 			in.Journal = v == "1"
 		case "docker":
 			in.Docker = v == "1"
+		case "vm":
+			in.VM = v == "1"
 		case "ips":
 			for _, ip := range strings.Fields(v) {
 				if len(in.IPs) < 12 {
@@ -647,9 +651,10 @@ func (m *Monitor) maxRaw() int {
 }
 
 func (m *Monitor) view(withSpark bool) ServerView {
+	vms := m.app.vms.summary(m.server().ID)
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	v := ServerView{Server: m.srv, Status: m.status, Error: m.err, Since: m.since, Info: m.info, Latest: m.latest, Units: m.units}
+	v := ServerView{Server: m.srv, Status: m.status, Error: m.err, Since: m.since, Info: m.info, Latest: m.latest, Units: m.units, VMs: vms}
 	// для лежащего сервера since — с какого момента нет связи: табло пишет
 	// «нет связи · 3 ч» ещё до того, как сработает оповещение
 	if m.status == "offline" && !m.downSince.IsZero() {
@@ -693,7 +698,7 @@ func (m *Monitor) setStatus(status, errText string) {
 
 func (m *Monitor) broadcastStatus() {
 	v := m.view(false)
-	m.app.hub.send("status", map[string]any{"id": v.ID, "status": v.Status, "error": v.Error, "since": v.Since, "info": v.Info})
+	m.app.hub.send("status", map[string]any{"id": v.ID, "status": v.Status, "error": v.Error, "since": v.Since, "info": v.Info, "vms": v.VMs})
 }
 
 func (m *Monitor) setInfo(in *Info) {

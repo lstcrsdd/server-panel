@@ -59,6 +59,7 @@ const ICONS = {
   pause: '<circle cx="10" cy="10" r="6.5"/><path d="M8.4 7.6v4.8M11.6 7.6v4.8"/>',
   search: '<circle cx="9" cy="9" r="5"/><path d="M13 13l3.5 3.5"/>',
   chev: '<path d="M7.5 5l5 5-5 5"/>',
+  vm: '<rect x="3" y="3.5" width="14" height="10" rx="1.5"/><path d="M7 16.5h6M10 13.5v3"/><rect x="6.5" y="6.5" width="7" height="4" rx=".8"/>',
   star: '<path d="M10 3.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7L10 14l-4.2 2.2.8-4.7-3.4-3.3 4.7-.7z"/>',
 };
 function icon(name) {
@@ -368,6 +369,7 @@ function connect() {
     s.error = d.error;
     s.since = d.since;
     if (d.info) s.info = d.info;
+    if ('vms' in d) s.vms = d.vms || null;
     if (d.status !== 'online') s.latest = s.latest && d.status === 'connecting' ? s.latest : null;
     updateSideRow(s);
     if (S.page && S.page.onStatus) S.page.onStatus(s);
@@ -743,7 +745,7 @@ class FleetPage {
     const info = s.info || {};
     const meta = [s.user ? `${s.user}@${s.host}` : s.host, info.os, info.cores ? `${info.cores}${NB}${Fmt.plural(info.cores, 'ядро', 'ядра', 'ядер')}` : null].filter(Boolean).join(' · ');
     const link = h('a', { class: 'bname', href, title: meta }, s.name);
-    const nameCell = h('td', { class: 'c-name' }, h('span', { class: 'bname-row' }, link, noteBadge(s.id)));
+    const nameCell = h('td', { class: 'c-name' }, h('span', { class: 'bname-row' }, link, vmBadge(s), noteBadge(s.id)));
     if (st.why.length) {
       nameCell.append(h('span', { class: 'bwhy', title: st.why.join('\n') },
         h('span', { class: 'bwhy-t' }, st.why[0], st.why.length > 1 ? h('i', null, L(' · ещё {0}', st.why.length - 1)) : null,
@@ -860,7 +862,7 @@ class FleetPage {
 }
 
 /* ---------- оповещения ---------- */
-const ALERT_KIND = { offline: L('связь'), cpu: L('процессор'), mem: L('память'), disk: L('диск'), failed: L('служба'), vpn: 'VPN', temp: L('перегрев'), check: L('проверка'), cert: L('сертификат') };
+const ALERT_KIND = { offline: L('связь'), cpu: L('процессор'), mem: L('память'), disk: L('диск'), failed: L('служба'), vpn: 'VPN', temp: L('перегрев'), check: L('проверка'), cert: L('сертификат'), vm: L('ВМ') };
 
 function sinceText(ms) {
   const sec = (Date.now() - ms) / 1000;
@@ -1084,6 +1086,7 @@ class AlertsPage {
     if (!R.temp) R.temp = { on: true, min: 5 };
     if (!R.check) R.check = { on: true, min: 3 };
     if (!R.cert) R.cert = { on: true, days: 14 };
+    if (!R.vm) R.vm = { on: true, min: 2 };
 
     const rules = h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('div', null, h('div', { class: 'card-title' }, L('Когда сообщать')),
@@ -1103,6 +1106,9 @@ class AlertsPage {
         ruleRow({ r: R.vpn, key: 'on', title: L('VPN перестал работать'), min: true,
           hint: L('xray, AmneziaWG, WireGuard, MTProto, sing-box, Hysteria и другие — если панель видела службу работающей, а потом она остановилась'),
           text: (x) => L('VPN-служба не работает {0}', after(x.min)) }),
+        ruleRow({ r: R.vm, key: 'on', title: L('Виртуальная машина не работает'), min: true,
+          hint: L('QEMU/KVM, libvirt и Proxmox — если панель видела ВМ работающей, а потом она выключилась сама, упала или встала на паузу. Остановка из панели оповещения не вызывает'),
+          text: (x) => L('ВМ не работает {0}', after(x.min)) }),
         ruleRow({ r: R.temp, key: 'on', title: L('Перегрев'), min: true,
           hint: L('Порог — критическая температура из датчика, а если датчик её не сообщает: процессор и видеокарта 95 °C, SSD 80 °C, HDD 60 °C'),
           text: (x) => L('Процессор, видеокарта или диск горячее порога {0}', after(x.min)) }),
@@ -1545,6 +1551,7 @@ const TAB_DEFS = [
   ['logs', L('Журнал')],
   ['network', L('Сеть')],
   ['docker', 'Docker'],
+  ['vms', L('ВМ')],
   ['system', L('Система')],
   ['schedule', L('Расписание')],
   ['notes', L('Заметки')],
@@ -1650,6 +1657,7 @@ class ServerPage {
     this.tabsEl.replaceChildren();
     for (const [key, label] of TAB_DEFS) {
       if (key === 'docker' && !docker) continue;
+      if (key === 'vms' && !(s && ((s.info && s.info.vm) || s.vms)) && this.tab !== 'vms') continue;
       if (key === 'vpn' && s && s.units && !s.units.some((u) => u.vpn) && this.tab !== 'vpn') continue;
       const n = key === 'notes' ? notesOf(this.id).length : 0;
       this.tabsEl.append(h('button', {
@@ -2733,6 +2741,207 @@ function vpnTab(page) {
 }
 
 /* ---------- вкладка «Журнал» ---------- */
+/* ---------- вкладка «ВМ» ---------- */
+// значок на табло: сколько ВМ работает; ведёт на вкладку
+function vmBadge(s) {
+  const v = s.vms;
+  if (!v || !v.total) return null;
+  const t = L('Виртуальные машины: работают {0} из {1}', v.running, v.total) + (v.bad ? L(', не работают {0}', v.bad) : '');
+  return h('a', { class: 'vm-badge', href: `#/s/${encodeURIComponent(s.id)}/vms`, title: t, 'aria-label': t }, icon('vm'),
+    v.running === v.total ? String(v.total) : `${v.running}/${v.total}`);
+}
+
+const VM_STATE = {
+  running: ['good', L('работает')], paused: ['warn', L('на паузе')], stopped: ['idle', L('выключена')],
+  starting: ['warn', L('запускается')], stopping: ['warn', L('выключается')], failed: ['bad', L('ошибка службы')],
+  crashed: ['bad', L('сбой')], unknown: ['idle', L('неизвестно')],
+};
+const VM_ACT = {
+  start: L('Запустить'), stop: L('Выключить'), restart: L('Перезагрузить'), poweroff: L('Выключить принудительно'), forget: L('Забыть'),
+};
+const VM_NET = { user: L('NAT (slirp)'), tap: 'tap', bridge: L('мост'), network: L('сеть libvirt'), direct: 'macvtap', nic: L('сеть') };
+
+function vmState(v) {
+  const [cls, text] = VM_STATE[v.state] || VM_STATE.unknown;
+  // выключилась сама, хотя панель видела её работающей
+  if (v.state === 'stopped' && v.ran && !v.stopped) return ['bad', L('выключилась')];
+  return [cls, text];
+}
+
+function vmKindText(v) {
+  if (v.kind === 'libvirt') return 'libvirt · ' + v.ref;
+  if (v.kind === 'proxmox') return 'Proxmox · VM ' + v.ref;
+  if (v.unit) return 'QEMU · ' + v.unit.replace(/\.service$/, '');
+  return v.manager === 'qmp' ? L('QEMU, запущен вручную') : 'QEMU';
+}
+
+async function vmAction(page, v, action) {
+  const name = v.name;
+  const conns = (v.fwds || []).reduce((a, f) => a + (f.conns || 0), 0) + ((v.display && v.display.clients) || 0);
+  const who = conns ? L('Сейчас к ней подключено: {0}. ', conns) : '';
+  let warn = null;
+  if (action === 'stop') {
+    warn = v.graceful
+      ? L('Гостю уйдёт сигнал выключения (ACPI), как от кнопки питания. Windows может выключаться несколько минут.')
+      : L('У службы нет ExecStop: systemd завершит QEMU сигналом — для гостя это как выдернуть шнур питания. Несохранённые данные пропадут.');
+    if (v.manager === 'qmp') warn += ' ' + L('Запустить её снова из панели не получится: ВМ запущена не службой.');
+  } else if (action === 'restart') {
+    warn = v.manager === 'systemd' && !v.graceful
+      ? L('У службы нет ExecStop: перезапуск оборвёт работу гостя без выключения.')
+      : L('ВМ выключится и запустится снова.');
+  } else if (action === 'poweroff') {
+    warn = L('Как выдернуть шнур питания: гостевая система не успеет сохранить данные.');
+  } else if (action === 'forget') {
+    warn = L('ВМ пропадёт из списка, пока снова не появится на сервере.');
+  }
+  if (action !== 'start') {
+    const ok = await confirmDialog({
+      title: L('{0} «{1}»?', VM_ACT[action], name),
+      text: L('Сервер: {0}. {1}', page.srv.name, vmKindText(v)),
+      warn: warn ? who + warn : null,
+      ok: VM_ACT[action], danger: action !== 'forget' && action !== 'restart',
+    });
+    if (!ok) return false;
+  }
+  try {
+    const r = await api(`/servers/${encodeURIComponent(page.id)}/vms/action`, { method: 'POST', body: { key: v.key, action } });
+    if (r.ok) toast(action === 'forget' ? L('ВМ {0} убрана из списка', name) : L('{0}: команда отправлена', name));
+    else toast(L('Не получилось: {0}', VM_ACT[action].toLowerCase()), 'bad', r.error);
+    return r.ok;
+  } catch (e) { toast(e.message, 'bad'); return false; }
+}
+
+function vmsTab(page) {
+  const id = page.id;
+  const st = { data: null, timer: 0, busy: false, dead: false, fresh: false };
+  const k = { run: kpiTile(L('Работают')), cpu: kpiTile(L('vCPU выделено')), mem: kpiTile(L('Память выделена')), disk: kpiTile(L('Диски образов')) };
+  const listEl = h('div', { class: 'vlist' });
+  const errBox = h('div');
+  const upd = h('span', { class: 'count' });
+  const el = h('div', null,
+    h('div', { class: 'grid kpis' }, Object.values(k).map((t) => t.el)),
+    h('div', { class: 'toolbar' }, h('span', { class: 'ink2', style: { fontSize: '13px' } }, L('QEMU/KVM, libvirt и Proxmox: состояние, ресурсы и как подключиться')), h('span', { class: 'grow' }), upd,
+      h('button', { class: 'btn sm', type: 'button', onclick: () => load(true) }, icon('refresh'), L('Обновить'))),
+    errBox, listEl);
+
+  const openLogs = (unit) => { page.logUnit = unit; location.hash = `#/s/${encodeURIComponent(id)}/logs`; };
+
+  async function load(fresh) {
+    if (st.busy || st.dead) return;
+    st.busy = true;
+    clearTimeout(st.timer);
+    if (!st.data) listEl.replaceChildren(h('div', { class: 'card empty' }, h('span', { class: 'spinner' }), NB + L(' Ищу виртуальные машины…')));
+    try {
+      st.data = await api(`/servers/${encodeURIComponent(id)}/vms` + (fresh ? '?fresh=1' : ''));
+      errBox.replaceChildren(st.data.privileged === false ? h('div', { class: 'alert warn', style: { marginBottom: '12px' } }, icon('warn'),
+        h('div', null, L('Нет прав root или sudo без пароля — размеры дисков, QMP и машины libvirt могут быть видны не полностью.'))) : '');
+      render();
+    } catch (e) {
+      errBox.replaceChildren(h('div', { class: 'alert bad', style: { marginBottom: '12px' } }, e.message));
+    }
+    st.busy = false;
+    if (!st.dead) st.timer = setTimeout(() => { if (document.hidden) { st.timer = setTimeout(() => load(), 5000); } else load(); }, 15000);
+  }
+
+  async function act(v, a) {
+    if (await vmAction(page, v, a)) setTimeout(() => load(true), a === 'forget' ? 0 : 2500);
+  }
+
+  function connRow(c) {
+    const step = c.pre ? h('div', { class: 'vm-step' }, h('span', { class: 'muted' }, L('1. Туннель — оставьте окно терминала открытым')), codeLine(c.pre)) : null;
+    const open = c.url ? h('a', { class: 'btn sm', href: c.url }, L('Открыть')) : null;
+    return h('div', { class: 'vm-conn' },
+      h('div', { class: 'vm-conn-head' }, h('b', null, c.label),
+        c.addr ? h('span', { class: 'mono' }, c.addr) : null,
+        c.addr ? h('button', { class: 'btn ghost sm icon-only', type: 'button', title: L('Скопировать адрес'), 'aria-label': L('Скопировать адрес'), onclick: () => copyText(c.addr) }, icon('copy')) : null,
+        h('span', { class: 'grow' }), open),
+      step,
+      c.pre && (c.url || c.addr) ? h('div', { class: 'muted vm-step-t' }, L('2. Подключитесь к {0}', c.addr || c.url)) : null,
+      (c.cmds || []).map((x) => codeLine(x)),
+      c.note ? h('div', { class: 'hint' }, c.note) : null);
+  }
+
+  function card(v) {
+    const [cls, text] = vmState(v);
+    const acts = v.actions || [];
+    const main = acts.filter((a) => a === 'start' || a === 'stop' || a === 'restart' || a === 'forget');
+    const extra = acts.filter((a) => !main.includes(a));
+    const run = v.state === 'running' || v.state === 'paused';
+    const cpus = v.cpus ? `${v.cpus}${NB}vCPU` + (v.topo ? ` (${v.topo.replace(/sockets=|cores=|threads=/g, '').split(',').join('×')})` : '') : null;
+    const lim = v.limits ? [v.limits.cpu ? L('ЦП {0}', `${Fmt.num(v.limits.cpu)}${NB}${Fmt.plural(Math.round(v.limits.cpu), 'ядро', 'ядра', 'ядер')}`) : null,
+      v.limits.mem ? L('память {0}', Fmt.bytes(v.limits.mem)) : null, v.limits.cpuset ? L('ядра {0}', v.limits.cpuset) : null].filter(Boolean).join(', ') : '';
+    const stats = [
+      run && v.up ? [L('Работает'), Fmt.dur(v.up)] : null,
+      !run && v.lastRun ? [L('Работала'), Fmt.dateTime(v.lastRun, false)] : null,
+      cpus ? [L('Процессор'), cpus + (run && v.cpuPct != null ? ' · ' + Fmt.pct(v.cpuPct) : '')] : null,
+      v.memMB ? [L('Память'), Fmt.bytes(v.memMB * 1048576) + (run && v.rss ? L(' · у хоста {0}', Fmt.bytes(v.rss)) : '')] : null,
+      lim ? [L('Ограничено службой'), lim] : null,
+      v.accel || v.machine ? [L('Ускорение'), [v.accel ? v.accel.toUpperCase() : null, v.machine].filter(Boolean).join(' · ')] : null,
+      v.autostart ? [L('Автозапуск'), ENABLED_TEXT[v.autostart] || v.autostart] : null,
+      v.pid ? ['PID', String(v.pid)] : null,
+    ].filter(Boolean);
+
+    const nets = [];
+    for (const n of v.nets || []) {
+      const ips = n.mode === 'user' ? (v.guestIP ? [v.guestIP] : []) : n.ips || [];
+      nets.push(h('span', { class: 'pchip vm-chip' }, h('b', null, VM_NET[n.mode] || n.mode), [n.bridge, n.model, n.mac].filter(Boolean).map((x) => ' · ' + x).join(''),
+        ips.length ? h('span', null, ' · ', h('b', null, ips.join(', '))) : null));
+    }
+    for (const f of v.fwds || []) {
+      nets.push(h('span', { class: 'pchip vm-chip', title: L('Проброс порта с сервера в ВМ') }, h('b', null, `${f.proto.toUpperCase()} ${f.hostAddr ? f.hostAddr + ':' : ''}${f.hostPort}`), ` → ${f.guestPort}`,
+        run ? (f.conns ? ` · ${Fmt.int(f.conns)} ${Fmt.plural(f.conns, 'подключение', 'подключения', 'подключений')}` : L(' · никто не подключён')) : ''));
+    }
+    if (run && v.guestConns) nets.push(h('span', { class: 'pchip vm-chip dim' }, L('исходящих соединений гостя: {0}', v.guestConns)));
+    const d = v.display;
+    if (d) nets.push(h('span', { class: 'pchip vm-chip' }, h('b', null, d.kind.toUpperCase()), ' ' + (d.socket || `${d.addr || '*'}:${d.port}`),
+      run && d.kind === 'vnc' && d.clients != null ? (d.clients ? L(' · смотрят: {0}', d.clients) : '') : '', d.pass ? L(' · с паролем') : ''));
+
+    const disks = (v.disks || []).map((x) => h('div', { class: 'vm-disk' },
+      h('span', { class: 'mono', title: x.file }, x.file),
+      h('span', { class: 'muted' }, [x.media === 'cdrom' ? 'CD-ROM' : x.format, x.virtual ? Fmt.bytes(x.virtual) : null, x.actual ? L('занято {0}', Fmt.bytes(x.actual)) : null].filter(Boolean).join(' · '))));
+
+    const conn = (v.connect || []);
+    return h('div', { class: 'card vcard' },
+      h('div', { class: 'vhead' },
+        h('div', { class: 'vname' }, h('b', null, v.name), h('span', { class: 'st ' + cls }, h('span', { class: 'dot' }), text),
+          v.detail && v.detail !== v.state && v.detail !== 'running' ? h('span', { class: 'muted', style: { fontSize: '12.5px' } }, v.detail) : null,
+          h('span', { class: 'muted', style: { fontSize: '12.5px' } }, vmKindText(v)),
+          v.guest === 'windows' ? h('span', { class: 'badge' }, 'Windows') : null),
+        h('div', { class: 'vact' },
+          v.unit ? h('button', { class: 'btn sm', type: 'button', onclick: () => openLogs(v.unit) }, L('Журнал')) : null,
+          main.map((a) => h('button', { class: 'btn sm' + (a === 'start' ? ' primary' : ''), type: 'button', onclick: () => act(v, a) }, a === 'start' ? icon('play') : a === 'stop' ? icon('power') : null, VM_ACT[a])),
+          extra.length ? h('button', { class: 'btn sm icon-only', type: 'button', title: L('Ещё'), 'aria-label': L('Ещё'), onclick: (e) => popMenu(e.currentTarget, extra.map((a) => ({ label: VM_ACT[a], danger: a === 'poweroff', run: () => act(v, a) }))) }, icon('dots')) : null)),
+      h('div', { class: 'vstats' }, stats.map(([a, b]) => h('span', null, h('span', { class: 'muted' }, a + ' '), b))),
+      nets.length ? h('div', { class: 'pchips' }, nets) : null,
+      disks.length ? h('div', { class: 'vm-disks' }, disks) : null,
+      conn.length ? h('div', { class: 'vm-conns' }, h('div', { class: 'section-title' }, run ? L('Подключение') : L('Подключение (когда ВМ работает)')), conn.map(connRow)) : null);
+  }
+
+  function render() {
+    const vms = st.data.vms || [];
+    const run = vms.filter((v) => v.state === 'running');
+    const bad = vms.filter((v) => vmState(v)[0] === 'bad');
+    const info = page.srv && page.srv.info, lat = page.srv && page.srv.latest;
+    const vcpu = run.reduce((a, v) => a + (v.cpus || 0), 0), mem = run.reduce((a, v) => a + (v.memMB || 0) * 1048576, 0);
+    const disk = vms.reduce((a, v) => a + (v.disks || []).reduce((b, x) => b + (x.media === 'cdrom' ? 0 : x.actual || 0), 0), 0);
+    const virt = vms.reduce((a, v) => a + (v.disks || []).reduce((b, x) => b + (x.media === 'cdrom' ? 0 : x.virtual || 0), 0), 0);
+    k.run.set(String(run.length), L(' из {0}', vms.length), bad.length ? L('не работают: {0}', bad.map((v) => v.name).join(', ')) : vms.length ? (run.length === vms.length ? L('все работают') : L('остальные выключены')) : L('машин не найдено'), null);
+    k.cpu.set(String(vcpu), info && info.cores ? L(' из {0}', info.cores) : '', L('у работающих ВМ'), info && info.cores ? (vcpu / info.cores) * 100 : null);
+    k.mem.set(mem ? Fmt.bytes(mem) : '0', lat && lat.memTotal ? L(' из {0}', Fmt.bytes(lat.memTotal)) : '', L('у работающих ВМ'), lat && lat.memTotal ? (mem / lat.memTotal) * 100 : null);
+    k.disk.set(disk ? Fmt.bytes(disk) : '—', '', virt ? L('занято на сервере, выделено {0}', Fmt.bytes(virt)) : L('нет сведений о размерах'), null);
+    upd.textContent = L('обновлено ') + Fmt.clock(st.data.t, true);
+    if (!vms.length) {
+      listEl.replaceChildren(h('div', { class: 'card empty' }, h('b', null, L('Виртуальные машины не найдены')),
+        L('Панель ищет процессы QEMU/KVM, службы systemd, которые их запускают, домены libvirt (virsh) и машины Proxmox (qm).')));
+      return;
+    }
+    listEl.replaceChildren(...vms.map(card));
+  }
+
+  load();
+  return { el, destroy() { st.dead = true; clearTimeout(st.timer); } };
+}
+
 function logsTab(page) {
   const id = page.id;
   const st = { unit: page.logUnit || '', prio: '', lines: 300, follow: false, q: '', entries: [], cursor: '', timer: 0, dead: false, busy: false, plain: false };
@@ -3358,7 +3567,7 @@ function termTab(page) {
   };
 }
 
-const TABS = { overview: overviewTab, procs: procsTab, services: servicesTab, vpn: vpnTab, files: filesTab, logs: logsTab, network: networkTab, docker: dockerTab, system: systemTab, schedule: scheduleTab, notes: notesTab, term: termTab };
+const TABS = { overview: overviewTab, procs: procsTab, services: servicesTab, vpn: vpnTab, vms: vmsTab, files: filesTab, logs: logsTab, network: networkTab, docker: dockerTab, system: systemTab, schedule: scheduleTab, notes: notesTab, term: termTab };
 
 /* ---------- действия с серверами ---------- */
 async function patchServer(id, body) {

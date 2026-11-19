@@ -858,6 +858,28 @@ td.nowrap { white-space: nowrap; }
 .pchip.dim { opacity: 0.7; }
 .vline { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wg { margin-top: 6px; display: grid; gap: 8px; }
+
+/* ---------- виртуальные машины ---------- */
+.vcard > * { min-width: 0; }
+.vm-chip { display: inline-block; max-width: 100%; line-height: 1.4; overflow-wrap: anywhere; }
+.vm-disks { display: grid; gap: 2px; font-size: 12.5px; }
+.vm-disk { display: flex; gap: 10px; min-width: 0; align-items: baseline; }
+.vm-disk .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vm-disk .muted { flex: none; font-variant-numeric: tabular-nums; }
+.vm-conns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 2px; }
+.vm-conns .section-title { margin: 0; }
+.vm-conn { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; }
+.vm-conn-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; min-width: 0; }
+.vm-conn-head .mono { font-size: 12.5px; }
+.vm-conn-head .grow { flex: 1; }
+.vm-conn-head .btn.icon-only { margin-left: -6px; }
+.vm-conn .codeline { margin-top: 4px; }
+.vm-conn .hint { margin-top: 2px; white-space: normal; overflow-wrap: anywhere; }
+.vm-step { margin-top: 4px; font-size: 12px; }
+.vm-step-t { font-size: 12px; margin-top: 4px; }
+.vm-badge { display: inline-flex; align-items: center; gap: 2px; font-size: 11.5px; color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
+.vm-badge .ico { width: 14px; height: 14px; }
+.vm-badge:hover { color: var(--ink); }
 .wg-head { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; font-size: 13px; }
 .tbl.compact td, .tbl.compact th { padding-top: 6px; padding-bottom: 6px; }
 

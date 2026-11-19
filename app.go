@@ -85,6 +85,7 @@ type App struct {
 	wsync  watchSync
 	chk    *checker
 	avail  *Avail
+	vms    *vmStore
 }
 
 func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, error) {
@@ -120,6 +121,7 @@ func NewApp(dataDir, home string, interval time.Duration, notify bool) (*App, er
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 	a.loadSettings()
 	a.avail = newAvail(dataDir)
+	a.vms = newVMStore(dataDir)
 	a.alerts = newAlerts(a, notify)
 	a.chk = newChecker()
 	a.terms = newTermManager()
@@ -130,6 +132,7 @@ func (a *App) Start() {
 	a.syncServers()
 	go a.alerts.run(a.ctx)
 	go a.runChecks(a.ctx)
+	go a.runVMs(a.ctx)
 	go a.reapTerms()
 	go func() {
 		t := time.NewTicker(5 * time.Minute)
@@ -148,6 +151,7 @@ func (a *App) Start() {
 func (a *App) Stop() {
 	a.hub.close()
 	a.avail.flush()
+	a.vms.flush()
 	a.mu.RLock()
 	mons := make([]*Monitor, 0, len(a.mons))
 	for _, m := range a.mons {
@@ -365,6 +369,7 @@ type ServerView struct {
 	Latest *Metrics    `json:"latest,omitempty"`
 	Spark  []Point     `json:"spark,omitempty"`
 	Units  []UnitState `json:"units,omitempty"`
+	VMs    *VMSum      `json:"vms,omitempty"` // виртуальные машины на сервере (vm.go)
 	// PanelKey — сервер добавлен по паролю, вход по ключу панели
 	PanelKey bool `json:"panelKey,omitempty"`
 }
